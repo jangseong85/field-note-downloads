@@ -22,6 +22,13 @@ export const SQUISH_SWITCH_CONFIG = {
   hoverScale: 1.035,
   colorDuration: 320,
 } as const;
+/** The reference colours are for dark surfaces; light surfaces mirror them so the "on" track never vanishes. */
+export const SQUISH_LIGHT_COLORS = {
+  trackColor: "#d4d4d8",
+  trackOnColor: "#27272a",
+  thumbColor: "#ffffff",
+  thumbOnColor: "#fafafa",
+} as const;
 const config = SQUISH_SWITCH_CONFIG;
 // Colour and transform share the thumb view: keep their entire graph JS-driven.
 // Mixing drivers on that view promotes colour nodes to native and crashes on mount.
@@ -35,13 +42,17 @@ export default function SquishThemeSwitch({
   onChange,
   disabled = false,
   accessibilityLabel = "다크 모드",
+  isDark = true,
 }: {
   checked: boolean;
+  /** Surface the switch sits on; picks the dark reference or the mirrored light palette. */
+  isDark?: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
   accessibilityLabel?: string;
 }) {
   const [reduceMotion, setReduceMotion] = useState(true);
+  const palette = isDark ? config : SQUISH_LIGHT_COLORS;
   const x = useRef(new Animated.Value(checked ? TRAVEL : 0)).current;
   const stretch = useRef(new Animated.Value(1)).current;
   const hover = useRef(new Animated.Value(1)).current;
@@ -231,7 +242,7 @@ export default function SquishThemeSwitch({
           {
             backgroundColor: color.interpolate({
               inputRange: [0, 1],
-              outputRange: [config.trackColor, config.trackOnColor],
+              outputRange: [palette.trackColor, palette.trackOnColor],
             }),
           },
         ]}
@@ -245,7 +256,7 @@ export default function SquishThemeSwitch({
               {
                 backgroundColor: color.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [config.thumbColor, config.thumbOnColor],
+                  outputRange: [palette.thumbColor, palette.thumbOnColor],
                 }),
                 transform: [
                   { scaleX: Animated.multiply(stretch, hover) },

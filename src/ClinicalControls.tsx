@@ -4,7 +4,6 @@ import {
   Animated,
   LayoutChangeEvent,
   PanResponder,
-  Platform,
   Pressable,
   ScrollView,
   StyleProp,
@@ -34,9 +33,9 @@ export const RUBBER_SEGMENT_CONFIG = {
   draggable: true,
 } as const;
 const segment = RUBBER_SEGMENT_CONFIG;
-// iOS 26 segmented controls are capsules; Android keeps the reference radius.
-const SEGMENT_RADIUS = Platform.OS === "ios" ? 999 : segment.radius;
-const SEGMENT_INNER_RADIUS = Platform.OS === "ios" ? 999 : segment.radius - segment.inset;
+// Capsule segments on both platforms (2026-10-23 design); the Rubber Segment motion is unchanged.
+const SEGMENT_RADIUS = 999;
+const SEGMENT_INNER_RADIUS = 999;
 export const rubberSegmentColors = (isDark: boolean) =>
   isDark
     ? {
@@ -130,6 +129,7 @@ export function RecordTabs({
   disabled = false,
   label,
   selectionRole = "tab",
+  trackColor,
 }: {
   isDark: boolean;
   options: { id: string; label: string }[];
@@ -138,9 +138,11 @@ export function RecordTabs({
   disabled?: boolean;
   label: string;
   selectionRole?: "tab" | "radio";
+  /** Track colour when the default would vanish into the surface it sits on. */
+  trackColor?: string;
 }) {
   const [reduceMotion, setReduceMotion] = useState(true);
-  const colors = rubberSegmentColors(isDark);
+  const colors = { ...rubberSegmentColors(isDark), ...(trackColor ? { trackColor } : {}) };
   const [slots, setSlots] = useState<
     Record<string, { x: number; width: number }>
   >({});
@@ -456,7 +458,8 @@ export function RecordTabs({
           pageX.current = x;
         })
       }
-      style={styles.tabTrack}
+      // The capsule clips overflowing tabs, so a scrolled rail keeps rounded ends instead of a square cut.
+      style={[styles.tabTrack, { backgroundColor: colors.trackColor, borderRadius: SEGMENT_RADIUS, overflow: "hidden" }]}
     >
       <ScrollView
         ref={scroll}

@@ -95,7 +95,7 @@ test("Squish matches the requested reference configuration without forcing theme
   assert.match(source, /duration: reduceMotion \? 0 : config.colorDuration/);
   assert.match(source, /pointerType === "mouse"/);
   assert.match(source, /hoverTo\(config.hoverScale\)/);
-  assert.match(source, /outputRange: \[config.trackColor, config.trackOnColor\]/);
+  assert.match(source, /outputRange: \[palette.trackColor, palette.trackOnColor\]/);
 });
 test("Squish controlled switch commits one tap and responds to changed props", () => {
   const h = harness("src/SquishThemeSwitch.tsx"), changes = [];
@@ -305,4 +305,19 @@ test("iOS uses the record options popover; Android keeps the centred options dia
   assert.match(app, /Platform\.OS === "ios" \? \(\s*<RecordOptionsPopover/);
   assert.match(app, /<CenteredDialog visible=\{optionsVisible\} isDark=\{isDark\} title="기록 옵션"/);
   assert.match(app, /ref=\{optionsButtonRef\}[^>]*onPress=\{openOptions\}/);
+});
+test("Squish toggles follow the surface: light mode never shows a white 'on' track on a white panel", () => {
+  const h = harness("src/SquishThemeSwitch.tsx");
+  const { SQUISH_LIGHT_COLORS, SQUISH_SWITCH_CONFIG } = h.exports;
+  assert.notEqual(SQUISH_LIGHT_COLORS.trackOnColor.toLowerCase(), "#f5f5f5");
+  assert.notEqual(SQUISH_LIGHT_COLORS.trackOnColor, SQUISH_LIGHT_COLORS.thumbOnColor);
+  assert.equal(SQUISH_SWITCH_CONFIG.trackOnColor, "#f5f5f5", "dark reference colours are unchanged");
+  const source = read("src/SquishThemeSwitch.tsx");
+  assert.match(source, /const palette = isDark \? config : SQUISH_LIGHT_COLORS/);
+  assert.match(source, /outputRange: \[palette.trackColor, palette.trackOnColor\]/);
+  for (const file of ["App.tsx", "src/RecordOptionsPopover.tsx"]) {
+    const tags = read(file).match(/<SquishThemeSwitch[\s\S]*?\/>/g) || [];
+    assert.ok(tags.length > 0);
+    for (const tag of tags) assert.match(tag, /isDark=\{/, `${file}: ${tag.slice(0, 60)}`);
+  }
 });

@@ -17,3 +17,21 @@ export function guideToPhotoCrop(photo: Size, viewport: Size, guide: Frame) {
   const endY = Math.min(photo.height, Math.ceil((bottom + offsetY) / scale));
   return { originX, originY, width: Math.max(1, endX - originX), height: Math.max(1, endY - originY) };
 }
+
+/**
+ * Widens the on-screen card guide before cropping. A card held slightly larger or off-centre
+ * would otherwise lose its edge text (name and birth date sit near the left edge); ML Kit
+ * tolerates the extra background. Clamped to the preview.
+ */
+export function expandGuide(guide: Frame, viewport: Size, marginX = 0.12, marginY = 0.15): Frame {
+  const dx = guide.width * marginX;
+  const dy = guide.height * marginY;
+  const x = Math.max(0, guide.x - dx);
+  const y = Math.max(0, guide.y - dy);
+  return {
+    x,
+    y,
+    width: Math.min(viewport.width, guide.x + guide.width + dx) - x,
+    height: Math.min(viewport.height, guide.y + guide.height + dy) - y,
+  };
+}

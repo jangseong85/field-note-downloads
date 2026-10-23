@@ -40,46 +40,52 @@ export default function PatientContacts({
     fontFamily: "Pretendard-Medium",
   };
   return (
-    <View style={{ gap: 12, marginTop: 16 }}>
-      <View style={{ gap: 8 }}>
-        <Text style={labelStyle}>{L.patientPhone}</Text>
+    <View style={[rows.card, { backgroundColor: t.field }]}>
+      <View style={rows.row}>
+        <View style={rows.label}>
+          <Text style={labelStyle}>{L.patientPhone}</Text>
+        </View>
         <ClinicalInput
           isDark={isDark}
+          embedded
           value={formatPhoneNumber(form.patientPhone)}
           onChangeText={(value) => onUpdate("patientPhone", formatPhoneNumber(value))}
           keyboardType="phone-pad"
           autoComplete="off"
           placeholder={L.phonePlaceholder}
           accessibilityLabel="환자 연락처 입력"
+          style={rows.input}
         />
       </View>
-      <View style={{ gap: 4 }}>
+      <View style={[rows.separator, { backgroundColor: t.separator }]} />
+      <View style={rows.row}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="보호자 관계와 이름 설정"
-          style={{ minHeight: 44, justifyContent: "center" }}
+          style={rows.label}
           onPress={() => {
             setName(form.guardianName);
             setRelation(form.guardianRelation);
             setOpen(true);
           }}
         >
-          <Text style={{ ...labelStyle, color: t.accent }}>
-            {L.guardian}
-            {form.guardianRelation || form.guardianName
-              ? ` · ${[form.guardianRelation, form.guardianName].filter(Boolean).join(" · ")}`
-              : " · 관계 / 이름"}{" "}
-            ›
-          </Text>
+          <Text style={{ ...labelStyle, color: t.accent }}>{L.guardian} ›</Text>
+          {!!(form.guardianRelation || form.guardianName) && (
+            <Text numberOfLines={1} style={[rows.caption, { color: t.muted }]}>
+              {[form.guardianRelation, form.guardianName].filter(Boolean).join(" · ")}
+            </Text>
+          )}
         </Pressable>
         <ClinicalInput
           isDark={isDark}
+          embedded
           value={formatPhoneNumber(form.guardianPhone)}
           onChangeText={(value) => onUpdate("guardianPhone", formatPhoneNumber(value))}
           keyboardType="phone-pad"
           autoComplete="off"
           placeholder={L.phonePlaceholder}
           accessibilityLabel="보호자 연락처 입력"
+          style={rows.input}
         />
       </View>
       <NoteModal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
@@ -88,8 +94,16 @@ export default function PatientContacts({
           <SafeAreaView edges={["bottom"]} style={[sheet.body, { backgroundColor: t.surface }]}>
             <View style={[sheet.grabber, { backgroundColor: t.border }]} />
             <View style={sheet.header}>
-              <Pressable accessibilityRole="button" accessibilityLabel="취소" onPress={() => setOpen(false)} style={[sheet.round, { backgroundColor: t.field }]}>
-                <Ionicons name="close" size={18} color={t.ink} />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="보호자 관계와 이름 지우기"
+                onPress={() => {
+                  setRelation("");
+                  setName("");
+                }}
+                style={[sheet.round, { backgroundColor: t.field }]}
+              >
+                <Ionicons name="trash-outline" size={18} color={t.danger} />
               </Pressable>
               <Text style={[sheet.title, { color: t.ink }]}>보호자 정보</Text>
               <Pressable
@@ -144,7 +158,6 @@ export default function PatientContacts({
                 </Pressable>
               )}
             </View>
-            <Text style={[sheet.note, { color: t.muted }]}>✓를 눌러야 기록에 반영됩니다. 닫으면 취소됩니다.</Text>
           </SafeAreaView>
         </KeyboardAvoidingView>
       </NoteModal>
@@ -162,5 +175,12 @@ const sheet = StyleSheet.create({
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { minHeight: 44, paddingHorizontal: 16, borderRadius: 22, justifyContent: "center" },
   clear: { position: "absolute", right: 4, top: 0, bottom: 0, width: 44, alignItems: "center", justifyContent: "center" },
-  note: { fontSize: 12, marginTop: 12, marginHorizontal: 4 },
+});
+const rows = StyleSheet.create({
+  card: { borderRadius: 12, paddingHorizontal: 14, marginTop: 12 },
+  row: { flexDirection: "row", alignItems: "center", minHeight: 52, gap: 10 },
+  label: { width: 92, justifyContent: "center", minHeight: 44 },
+  caption: { fontSize: 11, marginTop: 2, fontFamily: "Pretendard-Regular" },
+  input: { flex: 1, paddingHorizontal: 0 },
+  separator: { height: StyleSheet.hairlineWidth },
 });

@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Image,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -14,7 +16,7 @@ import DateTimeFields from "./DateTimeFields";
 import DateTimeWheelPicker from "./DateTimeWheelPicker";
 import ResizableMemoInput from "./ResizableMemoInput";
 import MemoAttachments, { MemoAttachment } from "./MemoAttachments";
-import { clinicalTheme } from "./clinicalTheme";
+import { clinicalTheme, vitalTint } from "./clinicalTheme";
 import { NoteModal, useNoteAlert } from "./NoteDialogs";
 import { calculateAge } from "./idDate";
 import PatientContacts, { ContactKey } from "./PatientContacts";
@@ -40,7 +42,12 @@ export type NoteForm = VitalValues &
     history: string[];
     attachments: MemoAttachment[];
     activeMeasurementId: string;
-    idDocument: { uri: string } | null;
+    idDocument: {
+      uri: string;
+      name?: string | null;
+      birthDate?: string | null;
+      capturedAt?: string;
+    } | null;
     chiefComplaintDrawing: string | null;
     historyDrawing: string | null;
   };
@@ -93,6 +100,9 @@ export default function PatientNoteScreen(p: Props) {
   const narrow = width < 390 || fontScale > 1.15;
   const [historyOpen, setHistoryOpen] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  // iOS cannot present the camera while the preview is still fading out; open it from onDismiss.
+  const rescanAfterPreview = useRef(false);
+  const previewingId = preview !== null && preview === form.idDocument?.uri;
   const [focusedVital, setFocusedVital] = useState<VitalKey | null>(null);
   const [birthPickerOpen, setBirthPickerOpen] = useState(false);
   useEffect(() => {
@@ -128,6 +138,67 @@ export default function PatientNoteScreen(p: Props) {
       >
         <Ionicons name={icon} size={20} color={t.muted} />
       </Pressable>
+    );
+  }
+  function roundTool(
+    icon: React.ComponentProps<typeof Ionicons>["name"],
+    label: string,
+    action: () => void,
+    disabled = false,
+    size = 44,
+  ) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        disabled={disabled}
+        onPress={action}
+        hitSlop={size < 44 ? (44 - size) / 2 : 0}
+        style={({ pressed }) => [
+          s.round,
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: t.field,
+          },
+          { opacity: disabled ? 0.35 : pressed ? 0.6 : 1 },
+        ]}
+      >
+        <Ionicons
+          name={icon}
+          size={size < 44 ? 16 : 19}
+          color={size < 44 ? t.accent : t.ink}
+        />
+      </Pressable>
+    );
+  }
+  function drawButton(
+    field: "chiefComplaintDrawing" | "historyDrawing",
+    label: string,
+  ) {
+    return (
+      <View style={s.drawRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          disabled={p.mediaBusy}
+          onPress={() => p.onDraw(field)}
+          hitSlop={4}
+          style={({ pressed }) => [
+            s.drawButton,
+            {
+              backgroundColor: t.accentSoft,
+              opacity: p.mediaBusy ? 0.35 : pressed ? 0.6 : 1,
+            },
+          ]}
+        >
+          <Ionicons name="create" size={18} color={t.accent} />
+          <Text style={[s.drawText, { color: t.accent }]}>
+            {medical ? "Draw" : "손글씨"}
+          </Text>
+        </Pressable>
+      </View>
     );
   }
   function heading(title: string, actions?: React.ReactNode) {
@@ -173,18 +244,27 @@ export default function PatientNoteScreen(p: Props) {
   return (
     <>
       <View style={[s.record, { backgroundColor: t.surface }]}>
-        <View style={s.patientHeader}>
-          <View style={[s.tools, { marginLeft: "auto" }]}>
-            {tool("add", "환자 추가", p.onAddPatient, p.busy || p.mediaBusy)}
-            {tool(
-              "trash-outline",
-              "선택한 환자 삭제",
-              p.onDeletePatient,
-              p.busy || p.mediaBusy,
-            )}
-          </View>
-        </View>
-        <View style={s.patientRail}>
+        {/* Title, +/trash and the patient rail stay mounted across patient switches so the tab motion is kept. */}
+        <View style={s.patientTop}>
+          {heading(
+            L.patient,
+            <View style={[s.tools, { gap: 8 }]}>
+              {roundTool(
+                "add",
+                "환자 추가",
+                p.onAddPatient,
+                p.busy || p.mediaBusy,
+                36,
+              )}
+              {roundTool(
+                "trash-outline",
+                "선택한 환자 삭제",
+                p.onDeletePatient,
+                p.busy || p.mediaBusy,
+                36,
+              )}
+            </View>,
+          )}
           <RecordTabs
             isDark={isDark}
             label="환자 선택"
@@ -196,15 +276,44 @@ export default function PatientNoteScreen(p: Props) {
         </View>
         <View key={p.activePatientId} style={s.body}>
           <View style={s.section}>
-            {heading(
-              L.patient,
-              tool(
-                "scan-outline",
-                "신분증 촬영",
-                p.onScan,
-                p.busy || p.mediaBusy,
-              ),
-            )}
+            <View style={s.idActions}>
+              {form.idDocument && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="촬영한 신분증 보기"
+                  onPress={() => setPreview(form.idDocument!.uri)}
+                  hitSlop={4}
+                  style={({ pressed }) => [
+                    s.pill,
+                    { backgroundColor: t.field, opacity: pressed ? 0.6 : 1 },
+                  ]}
+                >
+                  <Ionicons name="card-outline" size={16} color={t.ink} />
+                  <Text style={[s.pillText, { color: t.ink }]}>
+                    {medical ? "View" : "보기"}
+                  </Text>
+                </Pressable>
+              )}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="신분증 촬영"
+                disabled={p.busy || p.mediaBusy}
+                onPress={p.onScan}
+                hitSlop={4}
+                style={({ pressed }) => [
+                  s.pill,
+                  {
+                    backgroundColor: t.field,
+                    opacity: p.busy || p.mediaBusy ? 0.35 : pressed ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="scan-outline" size={16} color={t.accent} />
+                <Text style={[s.pillText, { color: t.accent }]}>
+                  {medical ? "ID" : "신분증"}
+                </Text>
+              </Pressable>
+            </View>
             <View style={[s.identityBoard, { backgroundColor: t.field }]}>
               <View style={[s.nameRow, narrow && s.stack]}>
                 <View style={s.nameCell}>
@@ -224,6 +333,7 @@ export default function PatientNoteScreen(p: Props) {
                     isDark={isDark}
                     label="성별 선택"
                     selectionRole="radio"
+                    trackColor={t.surface}
                     options={[
                       { id: "남성", label: L.male },
                       { id: "여성", label: L.female },
@@ -289,41 +399,9 @@ export default function PatientNoteScreen(p: Props) {
               form={form}
               onUpdate={p.onUpdate}
             />
-            {form.idDocument && (
-              <View style={s.documentRow}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="저장한 신분증 보기"
-                  onPress={() => setPreview(form.idDocument!.uri)}
-                  style={s.documentOpen}
-                >
-                  <Ionicons name="card-outline" size={18} color={t.muted} />
-                  <Text style={[s.documentText, muted]}>신분증 자료</Text>
-                  <Ionicons name="chevron-forward" size={14} color={t.muted} />
-                </Pressable>
-                {tool("trash-outline", "신분증 자료 삭제", () =>
-                  Alert.alert("자료 삭제", "저장한 신분증 사진을 삭제할까요?", [
-                    { text: "취소", style: "cancel" },
-                    {
-                      text: "삭제",
-                      style: "destructive",
-                      onPress: p.onDeleteDocument,
-                    },
-                  ]),
-                )}
-              </View>
-            )}
           </View>
           <View style={s.section}>
-            {heading(
-              L.complaint,
-              tool(
-                "pencil-outline",
-                "주증상 손글씨 입력",
-                () => p.onDraw("chiefComplaintDrawing"),
-                p.mediaBusy,
-              ),
-            )}
+            {heading(L.complaint)}
             <DateTimeFields
               title="Onset"
               showElapsed
@@ -344,17 +422,26 @@ export default function PatientNoteScreen(p: Props) {
               onChangeText={(value) => p.onUpdate("chiefComplaint", value)}
               placeholder={L.complaintPlaceholder}
             />
+            {drawButton("chiefComplaintDrawing", "주증상 손글씨 입력")}
             {drawing(form.chiefComplaintDrawing, "chiefComplaintDrawing")}
           </View>
           <View style={s.section}>
             {heading(
               L.vitals,
-              <View style={s.tools}>
-                {tool("add", "활력징후 측정 추가", p.onAddMeasurement)}
-                {tool(
+              <View style={[s.tools, { gap: 8 }]}>
+                {roundTool(
+                  "add",
+                  "활력징후 측정 추가",
+                  p.onAddMeasurement,
+                  false,
+                  36,
+                )}
+                {roundTool(
                   "trash-outline",
                   "선택한 측정 삭제",
                   p.onDeleteMeasurement,
+                  false,
+                  36,
                 )}
               </View>,
             )}
@@ -387,13 +474,20 @@ export default function PatientNoteScreen(p: Props) {
                     narrow && { width: "48%" },
                     fontScale > 1.7 && { width: "100%" },
                     {
-                      backgroundColor: t.field,
+                      backgroundColor: vitalTint(vital.key, isDark).background,
                       borderColor:
                         focusedVital === vital.key ? t.accent : "transparent",
                     },
                   ]}
                 >
-                  <Text style={[s.vitalLabel, muted]}>{medical ? VITAL_TERMS[vital.key].en : vital.label}</Text>
+                  <Text
+                    style={[
+                      s.vitalLabel,
+                      { color: vitalTint(vital.key, isDark).label },
+                    ]}
+                  >
+                    {medical ? VITAL_TERMS[vital.key].en : vital.label}
+                  </Text>
                   <ClinicalInput
                     isDark={isDark}
                     embedded
@@ -419,24 +513,16 @@ export default function PatientNoteScreen(p: Props) {
                       !form[vital.key] && s.vitalPlaceholder,
                     ]}
                   />
-                  <Text style={[s.unit, muted]}>{medical ? VITAL_TERMS[vital.key].unitEn : vital.unit}</Text>
+                  <Text style={[s.unit, muted]}>
+                    {medical ? VITAL_TERMS[vital.key].unitEn : vital.unit}
+                  </Text>
                 </View>
               ))}
             </View>
-            {map !== null && (
-              <Text style={[s.map, muted]}>{L.map(map)}</Text>
-            )}
+            {map !== null && <Text style={[s.map, muted]}>{L.map(map)}</Text>}
           </View>
           <View style={s.section}>
-            {heading(
-              L.history,
-              tool(
-                "pencil-outline",
-                "병력 손글씨 입력",
-                () => p.onDraw("historyDrawing"),
-                p.mediaBusy,
-              ),
-            )}
+            {heading(L.history)}
             <View style={s.chips}>
               {orderedHistory(form.history).map((item) => (
                 <Pressable
@@ -444,23 +530,35 @@ export default function PatientNoteScreen(p: Props) {
                   accessibilityRole="button"
                   accessibilityLabel={`${item}, 병력 선택 열기`}
                   onPress={() => setHistoryOpen(true)}
-                  style={({ pressed }) => [s.chip, { backgroundColor: t.ink, opacity: pressed ? 0.6 : 1 }]}
+                  style={({ pressed }) => [
+                    s.chip,
+                    { backgroundColor: t.ink, opacity: pressed ? 0.6 : 1 },
+                  ]}
                 >
-                  <Text style={[s.chipText, { color: t.surface }]}>{term(item)}</Text>
+                  <Text style={[s.chipText, { color: t.surface }]}>
+                    {term(item)}
+                  </Text>
                 </Pressable>
               ))}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="병력 선택"
                 onPress={() => setHistoryOpen(true)}
-                style={({ pressed }) => [s.moreHistory, { borderColor: t.border, opacity: pressed ? 0.6 : 1 }]}
+                style={({ pressed }) => [
+                  s.moreHistory,
+                  { borderColor: t.border, opacity: pressed ? 0.6 : 1 },
+                ]}
               >
                 <Ionicons name="add" size={15} color={t.muted} />
-                <Text style={[s.chipText, muted]}>{form.history.length ? L.historyAdd : L.historyPick}</Text>
+                <Text style={[s.chipText, muted]}>
+                  {form.history.length ? L.historyAdd : L.historyPick}
+                </Text>
               </Pressable>
             </View>
             {form.history.length > 0 && (
-              <Text style={[s.historySummary, muted]}>{historySummary(form.history, term, L.historyPrefix)}</Text>
+              <Text style={[s.historySummary, muted]}>
+                {historySummary(form.history, term, L.historyPrefix)}
+              </Text>
             )}
             <ReviewChecklist
               isDark={isDark}
@@ -477,6 +575,7 @@ export default function PatientNoteScreen(p: Props) {
               onChangeText={(value) => p.onUpdate("historyMemo", value)}
               placeholder={L.historyMemoPlaceholder}
             />
+            {drawButton("historyDrawing", "병력 손글씨 입력")}
             {drawing(form.historyDrawing, "historyDrawing")}
           </View>
         </View>
@@ -502,7 +601,12 @@ export default function PatientNoteScreen(p: Props) {
           }}
           contacts={[
             { label: "환자", phone: form.patientPhone },
-            { label: form.guardianRelation ? `보호자(${form.guardianRelation})` : "보호자", phone: form.guardianPhone },
+            {
+              label: form.guardianRelation
+                ? `보호자(${form.guardianRelation})`
+                : "보호자",
+              phone: form.guardianPhone,
+            },
           ].filter((contact) => contact.phone.replace(/\D/g, "").length >= 9)}
         />
       </View>
@@ -535,17 +639,128 @@ export default function PatientNoteScreen(p: Props) {
         visible={preview !== null}
         animationType="fade"
         onRequestClose={() => setPreview(null)}
+        onDismiss={() => {
+          if (!rescanAfterPreview.current) return;
+          rescanAfterPreview.current = false;
+          p.onScan();
+        }}
       >
-        <SafeAreaView style={[s.preview, { backgroundColor: t.page }]}>
+        <SafeAreaView style={s.preview}>
           <View style={s.previewHeader}>
-            {tool("close", "자료 미리보기 닫기", () => setPreview(null))}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="자료 미리보기 닫기"
+              onPress={() => setPreview(null)}
+              style={s.glass}
+            >
+              <Ionicons name="close" size={20} color="#FFFFFF" />
+            </Pressable>
+            <View style={s.previewTitleBlock}>
+              <Text style={s.previewTitle}>
+                {previewingId
+                  ? medical
+                    ? "ID"
+                    : "신분증"
+                  : medical
+                    ? "Drawing"
+                    : "손글씨 기록"}
+              </Text>
+              {previewingId && !!form.idDocument?.capturedAt && (
+                <Text style={s.previewSubtitle}>
+                  {form.idDocument.capturedAt} 촬영
+                </Text>
+              )}
+            </View>
+            {previewingId ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="신분증 사진 삭제"
+                onPress={() =>
+                  Alert.alert(
+                    "신분증 사진 삭제",
+                    "저장한 신분증 사진을 삭제할까요? 입력한 이름과 생년월일은 그대로 둡니다.",
+                    [
+                      { text: "취소", style: "cancel" },
+                      {
+                        text: "삭제",
+                        style: "destructive",
+                        onPress: () => {
+                          setPreview(null);
+                          p.onDeleteDocument();
+                        },
+                      },
+                    ],
+                  )
+                }
+                style={s.glass}
+              >
+                <Ionicons name="trash-outline" size={19} color="#FF6B6B" />
+              </Pressable>
+            ) : (
+              <View style={s.glassSpace} />
+            )}
           </View>
           {preview && (
-            <Image
-              source={{ uri: preview }}
-              resizeMode="contain"
-              style={s.previewImage}
-            />
+            <ScrollView
+              style={s.previewZoom}
+              contentContainerStyle={s.previewZoomContent}
+              maximumZoomScale={4}
+              minimumZoomScale={1}
+              centerContent
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}
+            >
+              <Image
+                source={{ uri: preview }}
+                resizeMode="contain"
+                style={previewingId ? s.previewImage : s.previewDrawing}
+              />
+            </ScrollView>
+          )}
+          {previewingId && (
+            <View style={s.previewCard}>
+              <View style={s.previewRow}>
+                <Text style={s.previewLabel}>
+                  {medical ? "Read name" : "인식한 이름"}
+                </Text>
+                <Text style={s.previewValue}>
+                  {form.idDocument?.name ||
+                    (medical ? "Not read" : "인식 안 됨")}
+                </Text>
+              </View>
+              <View style={s.previewDivider} />
+              <View style={s.previewRow}>
+                <Text style={s.previewLabel}>
+                  {medical ? "Read DOB" : "인식한 생년월일"}
+                </Text>
+                <Text style={s.previewValue}>
+                  {form.idDocument?.birthDate
+                    ? formatDate(form.idDocument.birthDate).replace(/ /g, "")
+                    : medical
+                      ? "Not read"
+                      : "인식 안 됨"}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="신분증 다시 촬영"
+                disabled={p.busy || p.mediaBusy}
+                onPress={() => {
+                  if (Platform.OS === "ios") rescanAfterPreview.current = true;
+                  setPreview(null);
+                  if (Platform.OS !== "ios") p.onScan();
+                }}
+                style={({ pressed }) => [
+                  s.rescan,
+                  { opacity: p.busy || p.mediaBusy ? 0.35 : pressed ? 0.7 : 1 },
+                ]}
+              >
+                <Ionicons name="scan-outline" size={17} color="#101113" />
+                <Text style={s.rescanText}>
+                  {medical ? "Rescan" : "다시 촬영"}
+                </Text>
+              </Pressable>
+            </View>
           )}
         </SafeAreaView>
       </NoteModal>
@@ -553,18 +768,8 @@ export default function PatientNoteScreen(p: Props) {
   );
 }
 const s = StyleSheet.create({
-  record: { borderRadius: 26, overflow: "hidden" },
+  record: { borderRadius: 28, overflow: "hidden" },
   attachmentsSection: { borderRadius: 26, marginTop: 16, padding: 20 },
-  patientHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 8,
-  },
-  patientLabel: { flexDirection: "row", gap: 8, alignItems: "center" },
-  eyebrow: { fontSize: 12, fontFamily: "Pretendard-Medium" },
-  count: { fontSize: 12 },
   tools: { flexDirection: "row", alignItems: "center" },
   tool: {
     width: 44,
@@ -572,8 +777,28 @@ const s = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  patientRail: { paddingHorizontal: 16 },
-  body: { paddingHorizontal: 20, paddingTop: 22 },
+  patientTop: { paddingHorizontal: 16, paddingTop: 16 },
+  round: { alignItems: "center", justifyContent: "center" },
+  pill: {
+    minHeight: 36,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+  },
+  pillText: { fontSize: 14, fontFamily: "Pretendard-SemiBold" },
+  drawRow: { flexDirection: "row", justifyContent: "flex-end", marginTop: 8 },
+  drawButton: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+  },
+  drawText: { fontSize: 14, fontFamily: "Pretendard-SemiBold" },
+  body: { paddingHorizontal: 16, paddingTop: 14 },
   section: { marginBottom: 32 },
   sectionHeader: {
     flexDirection: "row",
@@ -584,11 +809,11 @@ const s = StyleSheet.create({
   },
   sectionHeading: { flex: 1, gap: 5 },
   sectionTitle: {
-    fontSize: 19,
-    fontFamily: "Pretendard-SemiBold",
+    fontSize: 20,
+    fontFamily: "Pretendard-Bold",
     letterSpacing: -0.4,
   },
-  identityBoard: { borderRadius: 16, paddingHorizontal: 14 },
+  identityBoard: { borderRadius: 12, paddingHorizontal: 14 },
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -626,15 +851,6 @@ const s = StyleSheet.create({
     borderLeftWidth: StyleSheet.hairlineWidth,
     paddingLeft: 10,
   },
-  documentRow: { flexDirection: "row", alignItems: "center", marginTop: 4 },
-  documentOpen: {
-    flex: 1,
-    minHeight: 44,
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-  },
-  documentText: { fontSize: 12 },
   measureRail: { marginBottom: 14 },
   vitalsBoard: {
     flexDirection: "row",
@@ -672,7 +888,11 @@ const s = StyleSheet.create({
     letterSpacing: -0.6,
   },
   bloodPressureInput: { fontSize: 24, letterSpacing: -0.8 },
-  vitalPlaceholder: { fontSize: 16, fontFamily: "Pretendard-Regular", letterSpacing: 0 },
+  vitalPlaceholder: {
+    fontSize: 16,
+    fontFamily: "Pretendard-Regular",
+    letterSpacing: 0,
+  },
   map: { fontSize: 12, marginTop: 10 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 14 },
   chip: {
@@ -709,7 +929,97 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   savedDrawingText: { fontSize: 14, flex: 1 },
-  preview: { flex: 1 },
-  previewHeader: { paddingHorizontal: 12, alignItems: "flex-end" },
-  previewImage: { flex: 1 },
+  idActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginBottom: 12,
+  },
+  preview: { flex: 1, backgroundColor: "#000000" },
+  previewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  glass: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.22)",
+  },
+  glassSpace: { width: 44, height: 44 },
+  previewTitleBlock: { alignItems: "center", gap: 2 },
+  previewTitle: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontFamily: "Pretendard-SemiBold",
+  },
+  previewSubtitle: {
+    color: "rgba(255,255,255,0.65)",
+    fontSize: 12,
+    fontFamily: "Pretendard-Regular",
+  },
+  previewZoom: { flex: 1 },
+  previewZoomContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  previewImage: { width: "100%", aspectRatio: 1.58, borderRadius: 16 },
+  // Handwriting is drawn on a portrait canvas: keep it full height (Android ScrollView cannot zoom).
+  previewDrawing: { flex: 1, width: "100%" },
+  previewCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 14,
+    backgroundColor: "rgba(44,45,50,0.96)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.16)",
+  },
+  previewRow: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  previewDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  previewLabel: {
+    color: "rgba(255,255,255,0.65)",
+    fontSize: 14,
+    fontFamily: "Pretendard-Regular",
+  },
+  previewValue: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontFamily: "Pretendard-SemiBold",
+    fontVariant: ["tabular-nums"],
+  },
+  rescan: {
+    minHeight: 48,
+    marginTop: 10,
+    borderRadius: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#F2F0EA",
+  },
+  rescanText: {
+    color: "#101113",
+    fontSize: 16,
+    fontFamily: "Pretendard-SemiBold",
+  },
 });

@@ -77,6 +77,7 @@ export default function RecordOptionsPopover(p: Props) {
     p.onClose();
     p.onReset();
   };
+
   return (
     <NoteModal visible={p.visible} transparent animationType="fade" onRequestClose={p.onClose}>
       <Pressable accessibilityLabel="기록 옵션 닫기" style={StyleSheet.absoluteFill} onPress={p.onClose} />
@@ -100,7 +101,7 @@ export default function RecordOptionsPopover(p: Props) {
           <>
             <View style={styles.row}>
               <Text style={[styles.label, styles.grow, { color: t.ink }]}>다크 모드</Text>
-              <SquishThemeSwitch checked={p.isDark} onChange={p.onThemeChange} />
+              <SquishThemeSwitch isDark={p.isDark} checked={p.isDark} onChange={p.onThemeChange} />
             </View>
             <View style={[styles.separator, separator]} />
             <View style={styles.row}>
@@ -111,6 +112,7 @@ export default function RecordOptionsPopover(p: Props) {
                 </Text>
               </View>
               <SquishThemeSwitch
+                isDark={p.isDark}
                 accessibilityLabel="휠 피커 사용"
                 checked={p.useWheelPicker}
                 disabled={!p.wheelPreferenceReady}
@@ -124,6 +126,7 @@ export default function RecordOptionsPopover(p: Props) {
                 <Text style={[styles.caption, { color: t.muted }]}>병력·검토사항을 HTN, DM처럼</Text>
               </View>
               <SquishThemeSwitch
+                isDark={p.isDark}
                 accessibilityLabel="의학용어로 표시"
                 checked={p.medicalTerms}
                 onChange={p.onMedicalTermsChange}

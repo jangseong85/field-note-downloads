@@ -5,7 +5,7 @@ const ts = require("typescript");
 const path = require("node:path");
 const moduleResult = { exports: {} };
 new Function("module", "exports", ts.transpileModule(fs.readFileSync(path.join(__dirname, "../src/cameraCrop.ts"), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(moduleResult, moduleResult.exports);
-const { guideToPhotoCrop } = moduleResult.exports;
+const { guideToPhotoCrop, expandGuide } = moduleResult.exports;
 test("crop uses guide position rather than assuming the center of the photo", () => {
   assert.deepEqual(guideToPhotoCrop({ width: 3000, height: 4000 }, { width: 300, height: 600 }, { x: 30, y: 150, width: 240, height: 150 }), { originX: 700, originY: 1000, width: 1600, height: 1000 });
   const shifted = guideToPhotoCrop({ width: 3000, height: 4000 }, { width: 300, height: 600 }, { x: 30, y: 210, width: 240, height: 150 });
@@ -35,8 +35,22 @@ test("clips edge overlap and rejects invalid or unmeasured geometry", () => {
 });
 test("camera mask and crop share measured guide coordinates", () => {
   const app = fs.readFileSync(path.join(__dirname, "../App.tsx"), "utf8");
-  assert.match(app, /guideToPhotoCrop\(capturedSource, viewport, guide\)/);
+  assert.match(app, /guideToPhotoCrop\(capturedSource, viewport, expandGuide\(guide, viewport\)\)/, "crop starts from the same measured guide as the mask");
   assert.match(app, /setGuideFrame\(\{ x: layout.x, y: layout.y, width: layout.width, height: layout.height \}\)/);
   assert.match(app, /guideTop \+ guideFrame.y/);
   assert.doesNotMatch(app, /portrait \? 0.62 : 0.9/);
+});
+test("the OCR crop keeps a margin around the guide so edge text survives a loosely held card", () => {
+  const viewport = { width: 412, height: 915 };
+  const guide = { x: 24.72, y: 300, width: 362.56, height: 229.47 };
+  const wide = expandGuide(guide, viewport);
+  assert.ok(wide.x < guide.x && wide.y < guide.y);
+  assert.ok(Math.abs(wide.width - guide.width * 1.24) < 1e-6 || wide.x === 0 || wide.x + wide.width === viewport.width);
+  assert.ok(Math.abs(wide.height - guide.height * 1.3) < 1e-6);
+  assert.ok(wide.x >= 0 && wide.x + wide.width <= viewport.width, "never past the preview");
+  const crop = guideToPhotoCrop({ width: 3024, height: 4032 }, viewport, wide);
+  const tight = guideToPhotoCrop({ width: 3024, height: 4032 }, viewport, guide);
+  assert.ok(crop.width > tight.width && crop.height > tight.height);
+  assert.ok(crop.originX >= 0 && crop.originX + crop.width <= 3024);
+  assert.match(fs.readFileSync(path.join(__dirname, "../App.tsx"), "utf8"), /guideToPhotoCrop\(capturedSource, viewport, expandGuide\(guide, viewport\)\)/);
 });

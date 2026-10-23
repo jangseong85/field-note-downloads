@@ -104,7 +104,7 @@ test("vital entries use large centered numbers with label above and unit below",
   assert.match(app, /vitalInput: \{[^}]*textAlign: "center"[^}]*fontSize: 28/);
   assert.match(app, /bloodPressureInput: \{\s*fontSize: 24/);
   assert.match(app, /!form\[vital.key\] && s.vitalPlaceholder/);
-  assert.match(app, /vitalPlaceholder: \{ fontSize: 16/);
+  assert.match(app, /vitalPlaceholder: \{\s*fontSize: 16/);
   assert.match(block, /borderColor:\s*focusedVital === vital.key \? t.accent : "transparent"/);
   assert.match(block, /fontScale > 1.7/);
   assert.doesNotMatch(block, /textAlign: "right"/);

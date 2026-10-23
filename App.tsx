@@ -6,7 +6,7 @@ import { createMediaSaveTask, MediaSaveTask, runMediaSave } from "./src/mediaSav
 import { planPatientWorkspaceReset, updatePatientById } from "./src/patientUpdates";
 import { addMeasurement, blankMeasurement, deleteMeasurement, normalizeMeasurements, selectMeasurement, snapshotMeasurements, VitalMeasurement } from "./src/vitalMeasurements";
 import { formatTimestamp, parseTimestamp } from "./src/dateTime";
-import { Frame, guideToPhotoCrop } from "./src/cameraCrop";
+import { Frame, expandGuide, guideToPhotoCrop } from "./src/cameraCrop";
 import PatientNoteScreen from "./src/PatientNoteScreen";
 import SquishThemeSwitch from "./src/SquishThemeSwitch";
 import RecordAffiliation, { loadSender } from "./src/RecordAffiliation";
@@ -21,7 +21,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
 import { captureRef } from "react-native-view-shot";
 import { WebView } from "react-native-webview";
@@ -606,7 +606,7 @@ function FieldNoteApp() {
       const capturedSource = await ImageManipulator.ImageManipulator.manipulate(
         photo.uri,
       ).renderAsync();
-      const crop = guideToPhotoCrop(capturedSource, viewport, guide);
+      const crop = guideToPhotoCrop(capturedSource, viewport, expandGuide(guide, viewport));
       const preparedContext = ImageManipulator.ImageManipulator.manipulate(photo.uri);
       preparedContext.crop(crop);
       if (crop.width < 1800)
@@ -742,13 +742,13 @@ function FieldNoteApp() {
             <ScrollView
               ref={scrollRef}
               style={styles.flex}
-              contentContainerStyle={[styles.page, Platform.OS === "ios" && styles.pageUnderFloatingNav]}
+              contentContainerStyle={[styles.page, styles.pageUnderFloatingNav]}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
             >
               <View style={styles.noteAppHeader}>
-                <View style={{ flex: 1, minWidth: 0, gap: 6 }}><View style={styles.noteBrand}><Text style={[styles.noteBrandNumber, { color: clinicalTheme(isDark).brand }]}>119</Text><Text style={[styles.noteBrandText, { color: clinicalTheme(isDark).muted }, Platform.OS === "ios" && { fontSize: 12, letterSpacing: 1.2 }]}>FIELD NOTE</Text></View>{!!affiliation && <Text style={Platform.OS === "ios" ? { color: clinicalTheme(isDark).ink, fontSize: 30, fontFamily: "Pretendard-Bold", letterSpacing: -0.6 } : { color: clinicalTheme(isDark).ink, fontSize: 18, fontFamily: "Pretendard-SemiBold" }}>{affiliation}</Text>}{activeTab !== "memo" && <Text style={[styles.noteTitle, { color: clinicalTheme(isDark).ink }]}>{activeTab === "settings" ? "설정" : "다수사상자"}</Text>}</View>
-                <Pressable ref={optionsButtonRef} accessibilityRole="button" accessibilityLabel="화면 및 기록 옵션" onPress={openOptions} style={[styles.noteHeaderMenu, Platform.OS === "ios" && { borderRadius: 22, backgroundColor: clinicalTheme(isDark).field }]}><Ionicons name="ellipsis-horizontal" size={Platform.OS === "ios" ? 20 : 23} color={clinicalTheme(isDark).ink} /></Pressable>
+                <View style={{ flex: 1, minWidth: 0, gap: 6 }}><View style={styles.noteBrand}><Text style={[styles.noteBrandNumber, { color: clinicalTheme(isDark).brand }]}>119</Text><Text style={[styles.noteBrandText, { color: clinicalTheme(isDark).muted }, { fontSize: 12, letterSpacing: 1.2 }]}>FIELD NOTE</Text></View>{!!affiliation && <Text style={{ color: clinicalTheme(isDark).ink, fontSize: 30, fontFamily: "Pretendard-Bold", letterSpacing: -0.6 }}>{affiliation}</Text>}{activeTab !== "memo" && <Text style={[styles.noteTitle, { color: clinicalTheme(isDark).ink }]}>{activeTab === "settings" ? "설정" : "다수사상자"}</Text>}</View>
+                <Pressable ref={optionsButtonRef} accessibilityRole="button" accessibilityLabel="화면 및 기록 옵션" onPress={openOptions} style={[styles.noteHeaderMenu, { borderRadius: 22, backgroundColor: clinicalTheme(isDark).surface, borderWidth: StyleSheet.hairlineWidth, borderColor: clinicalTheme(isDark).border }]}><Ionicons name="ellipsis-horizontal" size={20} color={clinicalTheme(isDark).ink} /></Pressable>
               </View>
               {activeTab === "memo" ? (
                 <PatientNoteScreen isDark={isDark} form={form} useWheelPicker={useWheelPicker}
@@ -869,21 +869,21 @@ function FieldNoteApp() {
           {optionsVisible && <RecordAffiliation isDark={isDark} onSaved={setSender} />}
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: clinicalTheme(isDark).field, borderRadius: 14, paddingLeft: 16, minHeight: 60 }}>
             <Text style={{ fontSize: 16, fontFamily: "Pretendard-Medium", color: clinicalTheme(isDark).ink }}>다크 모드</Text>
-            <SquishThemeSwitch checked={isDark} onChange={changeTheme} />
+            <SquishThemeSwitch isDark={isDark} checked={isDark} onChange={changeTheme} />
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: clinicalTheme(isDark).field, borderRadius: 14, paddingLeft: 16, minHeight: 60 }}>
             <View style={{ flex: 1, gap: 4, paddingVertical: 10 }}>
               <Text style={{ fontSize: 16, fontFamily: "Pretendard-Medium", color: clinicalTheme(isDark).ink }}>휠 피커 사용</Text>
               <Text style={{ fontSize: 13, color: clinicalTheme(isDark).muted }}>{useWheelPicker ? "사용한다" : "사용하지 않는다 · 숫자 직접 입력"}</Text>
             </View>
-            <SquishThemeSwitch accessibilityLabel="휠 피커 사용" checked={useWheelPicker} disabled={!wheelPreferenceReady} onChange={value => void changeWheelPreference(value)} />
+            <SquishThemeSwitch isDark={isDark} accessibilityLabel="휠 피커 사용" checked={useWheelPicker} disabled={!wheelPreferenceReady} onChange={value => void changeWheelPreference(value)} />
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: clinicalTheme(isDark).field, borderRadius: 14, paddingLeft: 16, minHeight: 60 }}>
             <View style={{ flex: 1, gap: 4, paddingVertical: 10 }}>
               <Text style={{ fontSize: 16, fontFamily: "Pretendard-Medium", color: clinicalTheme(isDark).ink }}>의학용어로 표시</Text>
               <Text style={{ fontSize: 13, color: clinicalTheme(isDark).muted }}>병력·검토사항을 HTN, DM처럼</Text>
             </View>
-            <SquishThemeSwitch accessibilityLabel="의학용어로 표시" checked={medicalTerms} onChange={value => void changeMedicalTerms(value)} />
+            <SquishThemeSwitch isDark={isDark} accessibilityLabel="의학용어로 표시" checked={medicalTerms} onChange={value => void changeMedicalTerms(value)} />
           </View>
           {activeTab === "memo" && <Pressable accessibilityRole="button" onPress={() => { setOptionsVisible(false); reset(); }} style={({ pressed }) => ({ minHeight: 48, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.6 : 1 })}>
             <Text style={{ fontSize: 16, fontFamily: "Pretendard-Medium", color: clinicalTheme(isDark).danger }}>환자 기록 전체 초기화</Text>
@@ -954,7 +954,7 @@ function SettingsPage({
             {isDark ? "켜짐" : "꺼짐"}
           </Text>
         </View>
-        <SquishThemeSwitch checked={isDark} onChange={onThemeChange} />
+        <SquishThemeSwitch isDark={isDark} checked={isDark} onChange={onThemeChange} />
       </View>
     </View>
   );
@@ -991,10 +991,11 @@ function BottomNavigation({
     { key: "mci" as const, label: "다수사상자", icon: "people-outline" as const, selectedIcon: "people" as const },
     { key: "settings" as const, label: "설정", icon: "settings-outline" as const, selectedIcon: "settings" as const },
   ];
-  if (Platform.OS === "ios") {
-    // iOS 26: a capsule tab bar floating above the content, which scrolls underneath it.
-    const t = clinicalTheme(isDark);
-    return <View pointerEvents="box-none" style={styles.floatingNavLayer}>
+  // A capsule tab bar floating above the content, which scrolls underneath it (both platforms).
+  // Absolute children ignore the SafeAreaView padding, so lift it above the home indicator / system nav bar.
+  const t = clinicalTheme(isDark);
+  const insets = useSafeAreaInsets();
+  return <View pointerEvents="box-none" style={[styles.floatingNavLayer, { paddingBottom: insets.bottom + 8 }]}>
       <View accessibilityRole="tablist" style={[styles.floatingNav, { backgroundColor: isDark ? "rgba(44,45,50,0.96)" : "rgba(250,249,247,0.97)", borderColor: t.border }]}>
         {tabs.map((tab) => {
           const selected = tab.key === activeTab;
@@ -1006,17 +1007,6 @@ function BottomNavigation({
         })}
       </View>
     </View>;
-  }
-  return <View style={[styles.bottomNav, isDark && darkStyles.bottomNav]}>
-    {tabs.map((tab) => {
-      const selected = tab.key === activeTab;
-      const color = selected ? clinicalTheme(isDark).accent : clinicalTheme(isDark).muted;
-      return <Pressable key={tab.key} accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={tab.label} onPress={() => onSelect(tab.key)} style={styles.bottomNavItem}>
-        <Ionicons name={selected ? tab.selectedIcon : tab.icon} size={23} color={color} />
-        <Text style={[styles.bottomNavText, { color }]}>{tab.label}</Text>
-      </Pressable>;
-    })}
-  </View>;
 }
 function HandwritingModal({
   visible,

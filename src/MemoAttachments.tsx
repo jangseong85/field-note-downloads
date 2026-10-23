@@ -24,7 +24,8 @@ import * as FileSystem from "expo-file-system/legacy";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { createMediaSaveTask, MediaSaveTask, runMediaSave } from "./mediaSave";
-import { clinicalTheme, clinicalMetrics } from "./clinicalTheme";
+import { clinicalTheme } from "./clinicalTheme";
+import { RecordTabs } from "./ClinicalControls";
 import { NoteModal, useNoteAlert } from "./NoteDialogs";
 import SendPhotosSheet from "./SendPhotosSheet";
 import type { SmsSource } from "./smsMessage";
@@ -94,6 +95,9 @@ export default function MemoAttachments({
   const { width: screenWidth } = useWindowDimensions();
   const photos = attachments.filter((item) => item.kind === "photo");
   const recordings = attachments.filter((item) => item.kind === "audio");
+  const [listMode, setListMode] = useState<"photo" | "audio">("photo");
+  const showPhotos = photos.length > 0 && (listMode === "photo" || recordings.length === 0);
+  const showRecordings = recordings.length > 0 && (listMode === "audio" || photos.length === 0);
   const [permission, requestCameraPermission] = useCameraPermissions();
   const camera = useRef<CameraView>(null);
   const operation = useRef(false);
@@ -384,7 +388,7 @@ export default function MemoAttachments({
           </Text>
         )}
       </View>
-      <View style={[styles.actions, { backgroundColor: t.field }]}>
+      <View style={styles.actions}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
@@ -398,7 +402,7 @@ export default function MemoAttachments({
           onPress={requestRecording}
           style={[
             styles.action,
-            (recording || audioNeedsRetry) && { backgroundColor: t.dangerSoft },
+            { backgroundColor: recording || audioNeedsRetry ? t.dangerSoft : t.field },
             working && { opacity: 0.5 },
           ]}
         >
@@ -437,9 +441,6 @@ export default function MemoAttachments({
             )}
           </View>
         </Pressable>
-        <View
-          style={[styles.toolSeparator, { backgroundColor: t.separator }]}
-        />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="환자 환부 사진 촬영"
@@ -447,6 +448,7 @@ export default function MemoAttachments({
           onPress={() => void openCamera()}
           style={[
             styles.action,
+            { backgroundColor: t.field },
             (recording || working || audioNeedsRetry) && { opacity: 0.4 },
           ]}
         >
@@ -467,7 +469,21 @@ export default function MemoAttachments({
           있습니다.
         </Text>
       )}
-      {photos.length > 0 && (
+      {photos.length > 0 && recordings.length > 0 && (
+        <View style={styles.segment}>
+          <RecordTabs
+            isDark={isDark}
+            label="첨부 보기 전환"
+            options={[
+              { id: "photo", label: `사진 ${photos.length}` },
+              { id: "audio", label: `녹취 ${recordings.length}` },
+            ]}
+            selectedId={listMode}
+            onSelect={(id) => setListMode(id === "audio" ? "audio" : "photo")}
+          />
+        </View>
+      )}
+      {showPhotos && (
         <>
           <Text style={[styles.groupLabel, { color: t.muted }]}>사진 {photos.length}</Text>
           <View style={styles.photoGrid}>
@@ -490,7 +506,7 @@ export default function MemoAttachments({
           </View>
         </>
       )}
-      {recordings.length > 0 && (
+      {showRecordings && (
         <>
           <Text style={[styles.groupLabel, { color: t.muted }]}>녹취 {recordings.length}</Text>
           {recordings.map((item, index) => {
@@ -693,36 +709,28 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   toolsTitle: { fontSize: 13, fontFamily: "Pretendard-Medium" },
-  actions: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 4,
-    borderRadius: clinicalMetrics.radius,
-  },
+  actions: { flexDirection: "row", gap: 8 },
   toolIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
   },
-  toolCopy: { flex: 1, minWidth: 0, gap: 4 },
+  toolCopy: { minWidth: 0, gap: 2 },
   toolDetail: { fontSize: 11, fontFamily: "Pretendard-Regular" },
-  toolSeparator: {
-    width: StyleSheet.hairlineWidth,
-    height: 32,
-    marginHorizontal: 3,
-  },
   action: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 9,
-    minHeight: 64,
-    paddingHorizontal: 8,
-    borderRadius: clinicalMetrics.radius - 4,
+    justifyContent: "center",
+    gap: 8,
+    minHeight: 52,
+    paddingHorizontal: 14,
+    borderRadius: 26,
   },
   actionText: { fontSize: 15, fontFamily: "Pretendard-Medium" },
+  segment: { marginTop: 14 },
   groupLabel: { fontSize: 12, fontFamily: "Pretendard-Medium", marginTop: 14, marginBottom: 6 },
   photoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   photoCell: { width: "32%", aspectRatio: 1, borderRadius: 12, overflow: "hidden" },
@@ -747,7 +755,7 @@ const styles = StyleSheet.create({
   smsButton: {
     minHeight: 48,
     marginTop: 14,
-    borderRadius: 14,
+    borderRadius: 24,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

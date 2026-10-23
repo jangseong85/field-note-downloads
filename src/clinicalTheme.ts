@@ -45,3 +45,27 @@ const dark: typeof light = {
 export function clinicalTheme(isDark: boolean) {
   return isDark ? dark : light;
 }
+
+/** Pastel tint per vital sign, only to tell the tiles apart at a glance. It never signals an abnormal value. */
+const VITAL_TINTS = {
+  light: {
+    bp: { background: "#FCE8EC", label: "#9E3A4E" },
+    pr: { background: "#FDECDF", label: "#9A5420" },
+    rr: { background: "#E4F0FB", label: "#2E6698" },
+    spo2: { background: "#E2F4EC", label: "#287052" },
+    bt: { background: "#FBF1D3", label: "#806210" },
+    bst: { background: "#EEE9FA", label: "#5F4B9C" },
+  },
+  dark: {
+    bp: { background: "#3A2A2F", label: "#F2AAB8" },
+    pr: { background: "#3A2F27", label: "#F3C09A" },
+    rr: { background: "#26313D", label: "#A3C9EE" },
+    spo2: { background: "#243630", label: "#9CD8BF" },
+    bt: { background: "#37321F", label: "#E8D48E" },
+    bst: { background: "#2F2A3C", label: "#C9B9F0" },
+  },
+} as const;
+export type VitalTintKey = keyof (typeof VITAL_TINTS)["light"];
+export function vitalTint(key: VitalTintKey, isDark: boolean) {
+  return VITAL_TINTS[isDark ? "dark" : "light"][key];
+}
