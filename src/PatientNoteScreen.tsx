@@ -1,0 +1,715 @@
+import React, { useEffect, useState } from "react";
+import {
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { ClinicalInput, RecordTabs } from "./ClinicalControls";
+import DateTimeFields from "./DateTimeFields";
+import DateTimeWheelPicker from "./DateTimeWheelPicker";
+import ResizableMemoInput from "./ResizableMemoInput";
+import MemoAttachments, { MemoAttachment } from "./MemoAttachments";
+import { clinicalTheme } from "./clinicalTheme";
+import { NoteModal, useNoteAlert } from "./NoteDialogs";
+import { calculateAge } from "./idDate";
+import PatientContacts, { ContactKey } from "./PatientContacts";
+import { dateDigits, formatDate } from "./dateTime";
+import { VitalKey, VitalMeasurement, VitalValues } from "./vitalMeasurements";
+import HistorySheet from "./HistorySheet";
+import { historySummary, orderedHistory } from "./historyOptions";
+import ReviewChecklist from "./ReviewChecklistCard";
+import { VITAL_TERMS, historyTerm, terms } from "./terms";
+import type { SenderInfo } from "./smsMessage";
+
+export type NoteTextKey =
+  | ContactKey
+  | "name"
+  | "birthDate"
+  | "gender"
+  | "chiefComplaint"
+  | "onsetDate"
+  | "onsetTime"
+  | "historyMemo";
+export type NoteForm = VitalValues &
+  Record<NoteTextKey, string> & {
+    history: string[];
+    attachments: MemoAttachment[];
+    activeMeasurementId: string;
+    idDocument: { uri: string } | null;
+    chiefComplaintDrawing: string | null;
+    historyDrawing: string | null;
+  };
+type Props = {
+  isDark: boolean;
+  useWheelPicker?: boolean;
+  form: NoteForm;
+  patients: { id: string; label: string }[];
+  activePatientId: string;
+  measurements: VitalMeasurement[];
+  busy: boolean;
+  mediaBusy: boolean;
+  onSelectPatient: (id: string) => void;
+  onAddPatient: () => void;
+  onDeletePatient: () => void;
+  onUpdate: (key: NoteTextKey, value: string) => void;
+  onScan: () => void;
+  onDeleteDocument: () => void;
+  onSelectMeasurement: (id: string) => void;
+  onAddMeasurement: () => void;
+  onDeleteMeasurement: () => void;
+  onMeasuredChange: (date: string, time: string) => void;
+  onVitalChange: (key: VitalKey, value: string) => void;
+  onHistoryChange: (history: string[]) => void;
+  onDraw: (field: "chiefComplaintDrawing" | "historyDrawing") => void;
+  onDeleteDrawing: (field: "chiefComplaintDrawing" | "historyDrawing") => void;
+  onAppend: (attachment: MemoAttachment) => Promise<void>;
+  onRemoveAttachment: (attachment: MemoAttachment) => Promise<void>;
+  sender: SenderInfo;
+  medicalTerms?: boolean;
+  onMediaBusyChange: (busy: boolean) => void;
+};
+const vitals: { key: VitalKey; label: string; unit: string }[] = [
+  { key: "bp", label: "혈압", unit: "mmHg" },
+  { key: "pr", label: "맥박", unit: "회/분" },
+  { key: "rr", label: "호흡", unit: "회/분" },
+  { key: "spo2", label: "산소포화도", unit: "%" },
+  { key: "bt", label: "체온", unit: "°C" },
+  { key: "bst", label: "혈당", unit: "mg/dL" },
+];
+
+export default function PatientNoteScreen(p: Props) {
+  const Alert = { alert: useNoteAlert() };
+  const { isDark, form } = p;
+  const t = clinicalTheme(isDark);
+  const medical = p.medicalTerms ?? false;
+  const L = terms(medical);
+  const term = (item: string) => historyTerm(item, medical);
+  const { width, fontScale } = useWindowDimensions();
+  const narrow = width < 390 || fontScale > 1.15;
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [focusedVital, setFocusedVital] = useState<VitalKey | null>(null);
+  const [birthPickerOpen, setBirthPickerOpen] = useState(false);
+  useEffect(() => {
+    setHistoryOpen(false);
+    setPreview(null);
+    setFocusedVital(null);
+    setBirthPickerOpen(false);
+  }, [p.activePatientId]);
+  const age = calculateAge(form.birthDate);
+  const mapParts = form.bp.match(/^(\d{2,3})\/(\d{2,3})$/);
+  const map =
+    mapParts && +mapParts[1]! > 0 && +mapParts[2]! > 0
+      ? Math.round((+mapParts[1]! + 2 * +mapParts[2]!) / 3)
+      : null;
+  const ink = { color: t.ink },
+    muted = { color: t.muted };
+  function tool(
+    icon: React.ComponentProps<typeof Ionicons>["name"],
+    label: string,
+    action: () => void,
+    disabled = false,
+  ) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        disabled={disabled}
+        onPress={action}
+        style={({ pressed }) => [
+          s.tool,
+          { opacity: disabled ? 0.35 : pressed ? 0.5 : 1 },
+        ]}
+      >
+        <Ionicons name={icon} size={20} color={t.muted} />
+      </Pressable>
+    );
+  }
+  function heading(title: string, actions?: React.ReactNode) {
+    return (
+      <View style={s.sectionHeader}>
+        <View style={s.sectionHeading}>
+          <Text style={[s.sectionTitle, ink]}>{title}</Text>
+        </View>
+        {actions}
+      </View>
+    );
+  }
+  function drawing(
+    uri: string | null,
+    field: "chiefComplaintDrawing" | "historyDrawing",
+  ) {
+    if (!uri) return null;
+    return (
+      <View style={[s.savedDrawing, { backgroundColor: t.field }]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="저장한 필기 보기"
+          onPress={() => setPreview(uri)}
+          style={s.savedDrawingOpen}
+        >
+          <Ionicons name="document-text-outline" size={20} color={t.muted} />
+          <Text style={[s.savedDrawingText, ink]}>손글씨 기록</Text>
+          <Ionicons name="chevron-forward" size={16} color={t.muted} />
+        </Pressable>
+        {tool("trash-outline", "필기 삭제", () =>
+          Alert.alert("필기 삭제", "이 필기만 삭제할까요?", [
+            { text: "취소", style: "cancel" },
+            {
+              text: "삭제",
+              style: "destructive",
+              onPress: () => p.onDeleteDrawing(field),
+            },
+          ]),
+        )}
+      </View>
+    );
+  }
+  return (
+    <>
+      <View style={[s.record, { backgroundColor: t.surface }]}>
+        <View style={s.patientHeader}>
+          <View style={[s.tools, { marginLeft: "auto" }]}>
+            {tool("add", "환자 추가", p.onAddPatient, p.busy || p.mediaBusy)}
+            {tool(
+              "trash-outline",
+              "선택한 환자 삭제",
+              p.onDeletePatient,
+              p.busy || p.mediaBusy,
+            )}
+          </View>
+        </View>
+        <View style={s.patientRail}>
+          <RecordTabs
+            isDark={isDark}
+            label="환자 선택"
+            options={p.patients}
+            selectedId={p.activePatientId}
+            onSelect={p.onSelectPatient}
+            disabled={p.busy || p.mediaBusy}
+          />
+        </View>
+        <View key={p.activePatientId} style={s.body}>
+          <View style={s.section}>
+            {heading(
+              L.patient,
+              tool(
+                "scan-outline",
+                "신분증 촬영",
+                p.onScan,
+                p.busy || p.mediaBusy,
+              ),
+            )}
+            <View style={[s.identityBoard, { backgroundColor: t.field }]}>
+              <View style={[s.nameRow, narrow && s.stack]}>
+                <View style={s.nameCell}>
+                  <Text style={[s.fieldLabel, muted]}>{L.name}</Text>
+                  <ClinicalInput
+                    isDark={isDark}
+                    embedded
+                    value={form.name}
+                    onChangeText={(value) => p.onUpdate("name", value)}
+                    placeholder={L.namePlaceholder}
+                    accessibilityLabel="환자 이름 입력"
+                    style={s.nameInput}
+                  />
+                </View>
+                <View style={[s.sex, narrow && { alignSelf: "flex-end" }]}>
+                  <RecordTabs
+                    isDark={isDark}
+                    label="성별 선택"
+                    selectionRole="radio"
+                    options={[
+                      { id: "남성", label: L.male },
+                      { id: "여성", label: L.female },
+                    ]}
+                    selectedId={form.gender}
+                    onSelect={(gender) =>
+                      p.onUpdate("gender", form.gender === gender ? "" : gender)
+                    }
+                  />
+                </View>
+              </View>
+              <View
+                style={[s.identityDivider, { backgroundColor: t.separator }]}
+              />
+              <View style={s.birthRow}>
+                <Text style={[s.fieldLabel, muted]}>{L.birthDate}</Text>
+                <View style={s.birthEntry}>
+                  {p.useWheelPicker === false ? (
+                    <ClinicalInput
+                      isDark={isDark}
+                      embedded
+                      value={formatDate(form.birthDate).replace(/ /g, "")}
+                      onChangeText={(value) =>
+                        p.onUpdate("birthDate", dateDigits(value))
+                      }
+                      placeholder="YYYY.MM.DD"
+                      accessibilityLabel="환자 생년월일 직접 입력"
+                      keyboardType="number-pad"
+                      style={[s.birthInput, s.birthValue]}
+                    />
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="환자 생년월일 선택"
+                      onPress={() => setBirthPickerOpen(true)}
+                      style={s.birthInput}
+                    >
+                      <Text
+                        style={[
+                          s.birthValue,
+                          { color: form.birthDate ? t.ink : t.placeholder },
+                        ]}
+                      >
+                        {form.birthDate
+                          ? formatDate(form.birthDate).replace(/ /g, "")
+                          : "YYYY.MM.DD"}
+                      </Text>
+                    </Pressable>
+                  )}
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    style={[s.age, ink, { borderLeftColor: t.border }]}
+                  >
+                    {age === null ? L.ageEmpty : L.age(age)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+            <PatientContacts
+              key={p.activePatientId}
+              isDark={isDark}
+              medical={medical}
+              form={form}
+              onUpdate={p.onUpdate}
+            />
+            {form.idDocument && (
+              <View style={s.documentRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="저장한 신분증 보기"
+                  onPress={() => setPreview(form.idDocument!.uri)}
+                  style={s.documentOpen}
+                >
+                  <Ionicons name="card-outline" size={18} color={t.muted} />
+                  <Text style={[s.documentText, muted]}>신분증 자료</Text>
+                  <Ionicons name="chevron-forward" size={14} color={t.muted} />
+                </Pressable>
+                {tool("trash-outline", "신분증 자료 삭제", () =>
+                  Alert.alert("자료 삭제", "저장한 신분증 사진을 삭제할까요?", [
+                    { text: "취소", style: "cancel" },
+                    {
+                      text: "삭제",
+                      style: "destructive",
+                      onPress: p.onDeleteDocument,
+                    },
+                  ]),
+                )}
+              </View>
+            )}
+          </View>
+          <View style={s.section}>
+            {heading(
+              L.complaint,
+              tool(
+                "pencil-outline",
+                "주증상 손글씨 입력",
+                () => p.onDraw("chiefComplaintDrawing"),
+                p.mediaBusy,
+              ),
+            )}
+            <DateTimeFields
+              title="Onset"
+              showElapsed
+              medical={medical}
+              useWheelPicker={p.useWheelPicker}
+              date={form.onsetDate}
+              time={form.onsetTime}
+              isDark={isDark}
+              onChange={(date, time) => {
+                p.onUpdate("onsetDate", date);
+                p.onUpdate("onsetTime", time);
+              }}
+            />
+            <ResizableMemoInput
+              isDark={isDark}
+              accessibilityLabel="주증상과 증상 경과"
+              value={form.chiefComplaint}
+              onChangeText={(value) => p.onUpdate("chiefComplaint", value)}
+              placeholder={L.complaintPlaceholder}
+            />
+            {drawing(form.chiefComplaintDrawing, "chiefComplaintDrawing")}
+          </View>
+          <View style={s.section}>
+            {heading(
+              L.vitals,
+              <View style={s.tools}>
+                {tool("add", "활력징후 측정 추가", p.onAddMeasurement)}
+                {tool(
+                  "trash-outline",
+                  "선택한 측정 삭제",
+                  p.onDeleteMeasurement,
+                )}
+              </View>,
+            )}
+            <View style={s.measureRail}>
+              <RecordTabs
+                isDark={isDark}
+                label="활력징후 측정 회차"
+                selectedId={form.activeMeasurementId}
+                options={p.measurements.map((m, i) => ({
+                  id: m.id,
+                  label: L.round(i + 1),
+                }))}
+                onSelect={p.onSelectMeasurement}
+              />
+            </View>
+            <DateTimeFields
+              title={L.measuredAt}
+              useWheelPicker={p.useWheelPicker}
+              date={form.measuredDate}
+              time={form.measuredTime}
+              isDark={isDark}
+              onChange={p.onMeasuredChange}
+            />
+            <View style={s.vitalsBoard}>
+              {vitals.map((vital) => (
+                <View
+                  key={vital.key}
+                  style={[
+                    s.vitalCell,
+                    narrow && { width: "48%" },
+                    fontScale > 1.7 && { width: "100%" },
+                    {
+                      backgroundColor: t.field,
+                      borderColor:
+                        focusedVital === vital.key ? t.accent : "transparent",
+                    },
+                  ]}
+                >
+                  <Text style={[s.vitalLabel, muted]}>{medical ? VITAL_TERMS[vital.key].en : vital.label}</Text>
+                  <ClinicalInput
+                    isDark={isDark}
+                    embedded
+                    accessibilityLabel={`${vital.label} ${vital.unit}`}
+                    value={form[vital.key]}
+                    placeholder={L.vitalInput}
+                    onChangeText={(value) => p.onVitalChange(vital.key, value)}
+                    onFocus={() => setFocusedVital(vital.key)}
+                    onBlur={() => setFocusedVital(null)}
+                    keyboardType={
+                      vital.key === "bt" ? "decimal-pad" : "number-pad"
+                    }
+                    maxLength={
+                      vital.key === "bp"
+                        ? 7
+                        : vital.key === "bt"
+                          ? 4
+                          : undefined
+                    }
+                    style={[
+                      s.vitalInput,
+                      vital.key === "bp" && s.bloodPressureInput,
+                      !form[vital.key] && s.vitalPlaceholder,
+                    ]}
+                  />
+                  <Text style={[s.unit, muted]}>{medical ? VITAL_TERMS[vital.key].unitEn : vital.unit}</Text>
+                </View>
+              ))}
+            </View>
+            {map !== null && (
+              <Text style={[s.map, muted]}>{L.map(map)}</Text>
+            )}
+          </View>
+          <View style={s.section}>
+            {heading(
+              L.history,
+              tool(
+                "pencil-outline",
+                "병력 손글씨 입력",
+                () => p.onDraw("historyDrawing"),
+                p.mediaBusy,
+              ),
+            )}
+            <View style={s.chips}>
+              {orderedHistory(form.history).map((item) => (
+                <Pressable
+                  key={item}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item}, 병력 선택 열기`}
+                  onPress={() => setHistoryOpen(true)}
+                  style={({ pressed }) => [s.chip, { backgroundColor: t.ink, opacity: pressed ? 0.6 : 1 }]}
+                >
+                  <Text style={[s.chipText, { color: t.surface }]}>{term(item)}</Text>
+                </Pressable>
+              ))}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="병력 선택"
+                onPress={() => setHistoryOpen(true)}
+                style={({ pressed }) => [s.moreHistory, { borderColor: t.border, opacity: pressed ? 0.6 : 1 }]}
+              >
+                <Ionicons name="add" size={15} color={t.muted} />
+                <Text style={[s.chipText, muted]}>{form.history.length ? L.historyAdd : L.historyPick}</Text>
+              </Pressable>
+            </View>
+            {form.history.length > 0 && (
+              <Text style={[s.historySummary, muted]}>{historySummary(form.history, term, L.historyPrefix)}</Text>
+            )}
+            <ReviewChecklist
+              isDark={isDark}
+              medical={medical}
+              history={orderedHistory(form.history)}
+              memo={form.historyMemo}
+              label={term}
+              onMemoChange={(value) => p.onUpdate("historyMemo", value)}
+            />
+            <ResizableMemoInput
+              isDark={isDark}
+              accessibilityLabel="병력 추가 메모"
+              value={form.historyMemo}
+              onChangeText={(value) => p.onUpdate("historyMemo", value)}
+              placeholder={L.historyMemoPlaceholder}
+            />
+            {drawing(form.historyDrawing, "historyDrawing")}
+          </View>
+        </View>
+      </View>
+      <View style={[s.attachmentsSection, { backgroundColor: t.surface }]}>
+        <MemoAttachments
+          key={p.activePatientId}
+          isDark={isDark}
+          attachments={form.attachments}
+          onAppend={p.onAppend}
+          onRemove={p.onRemoveAttachment}
+          onBusyChange={p.onMediaBusyChange}
+          smsSource={{
+            sender: p.sender,
+            name: form.name,
+            birthDate: form.birthDate,
+            chiefComplaint: form.chiefComplaint,
+            onsetDate: form.onsetDate,
+            onsetTime: form.onsetTime,
+            measurements: p.measurements,
+            historySummary: historySummary(form.history, term, L.historyPrefix),
+            medical,
+          }}
+          contacts={[
+            { label: "환자", phone: form.patientPhone },
+            { label: form.guardianRelation ? `보호자(${form.guardianRelation})` : "보호자", phone: form.guardianPhone },
+          ].filter((contact) => contact.phone.replace(/\D/g, "").length >= 9)}
+        />
+      </View>
+      <DateTimeWheelPicker
+        key={p.activePatientId}
+        visible={birthPickerOpen}
+        title="생년월일"
+        date={form.birthDate}
+        dateOnly
+        isDark={isDark}
+        onCancel={() => setBirthPickerOpen(false)}
+        onApply={(date) => {
+          p.onUpdate("birthDate", date);
+          setBirthPickerOpen(false);
+        }}
+      />
+      <HistorySheet
+        visible={historyOpen}
+        isDark={isDark}
+        history={form.history}
+        title={L.historyPick}
+        label={term}
+        onCancel={() => setHistoryOpen(false)}
+        onApply={(history) => {
+          p.onHistoryChange(history);
+          setHistoryOpen(false);
+        }}
+      />
+      <NoteModal
+        visible={preview !== null}
+        animationType="fade"
+        onRequestClose={() => setPreview(null)}
+      >
+        <SafeAreaView style={[s.preview, { backgroundColor: t.page }]}>
+          <View style={s.previewHeader}>
+            {tool("close", "자료 미리보기 닫기", () => setPreview(null))}
+          </View>
+          {preview && (
+            <Image
+              source={{ uri: preview }}
+              resizeMode="contain"
+              style={s.previewImage}
+            />
+          )}
+        </SafeAreaView>
+      </NoteModal>
+    </>
+  );
+}
+const s = StyleSheet.create({
+  record: { borderRadius: 26, overflow: "hidden" },
+  attachmentsSection: { borderRadius: 26, marginTop: 16, padding: 20 },
+  patientHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 8,
+  },
+  patientLabel: { flexDirection: "row", gap: 8, alignItems: "center" },
+  eyebrow: { fontSize: 12, fontFamily: "Pretendard-Medium" },
+  count: { fontSize: 12 },
+  tools: { flexDirection: "row", alignItems: "center" },
+  tool: {
+    width: 44,
+    height: 44,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  patientRail: { paddingHorizontal: 16 },
+  body: { paddingHorizontal: 20, paddingTop: 22 },
+  section: { marginBottom: 32 },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+    minHeight: 44,
+  },
+  sectionHeading: { flex: 1, gap: 5 },
+  sectionTitle: {
+    fontSize: 19,
+    fontFamily: "Pretendard-SemiBold",
+    letterSpacing: -0.4,
+  },
+  identityBoard: { borderRadius: 16, paddingHorizontal: 14 },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingTop: 12,
+    paddingBottom: 4,
+    gap: 8,
+  },
+  stack: { flexDirection: "column", alignItems: "stretch" },
+  nameCell: { flex: 1, minWidth: 0 },
+  fieldLabel: { fontSize: 12, fontFamily: "Pretendard-Regular" },
+  nameInput: { paddingHorizontal: 0, paddingVertical: 8, minHeight: 42 },
+  sex: { width: 148, flexShrink: 0 },
+  identityDivider: { height: StyleSheet.hairlineWidth },
+  birthRow: {
+    paddingVertical: 12,
+  },
+  birthEntry: { flexDirection: "row", alignItems: "center", gap: 10 },
+  birthInput: {
+    flex: 1,
+    paddingHorizontal: 0,
+    minHeight: 52,
+    justifyContent: "center",
+  },
+  birthValue: {
+    fontSize: 16,
+    fontFamily: "Pretendard-Regular",
+    includeFontPadding: false,
+    fontVariant: ["tabular-nums"],
+  },
+  age: {
+    fontSize: 16,
+    fontFamily: "Pretendard-Regular",
+    includeFontPadding: false,
+    fontVariant: ["tabular-nums"],
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    paddingLeft: 10,
+  },
+  documentRow: { flexDirection: "row", alignItems: "center", marginTop: 4 },
+  documentOpen: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  documentText: { fontSize: 12 },
+  measureRail: { marginBottom: 14 },
+  vitalsBoard: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  vitalCell: {
+    width: "31%",
+    flexGrow: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 120,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 4,
+    paddingVertical: 12,
+    gap: 4,
+  },
+  vitalLabel: {
+    fontSize: 13,
+    fontFamily: "Pretendard-Medium",
+    textAlign: "center",
+  },
+  unit: { fontSize: 12, textAlign: "center" },
+  vitalInput: {
+    width: "100%",
+    paddingHorizontal: 0,
+    paddingVertical: 4,
+    textAlign: "center",
+    fontSize: 28,
+    lineHeight: 36,
+    fontFamily: "Pretendard-SemiBold",
+    fontVariant: ["tabular-nums"],
+    letterSpacing: -0.6,
+  },
+  bloodPressureInput: { fontSize: 24, letterSpacing: -0.8 },
+  vitalPlaceholder: { fontSize: 16, fontFamily: "Pretendard-Regular", letterSpacing: 0 },
+  map: { fontSize: 12, marginTop: 10 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 14 },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 36,
+    paddingHorizontal: 13,
+    borderRadius: 18,
+  },
+  chipText: { fontSize: 13, fontFamily: "Pretendard-Medium" },
+  moreHistory: {
+    minHeight: 36,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  historySummary: { fontSize: 13, lineHeight: 21, marginBottom: 14 },
+  savedDrawing: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 12,
+    marginTop: 10,
+    paddingLeft: 12,
+  },
+  savedDrawingOpen: {
+    minHeight: 48,
+    flex: 1,
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  savedDrawingText: { fontSize: 14, flex: 1 },
+  preview: { flex: 1 },
+  previewHeader: { paddingHorizontal: 12, alignItems: "flex-end" },
+  previewImage: { flex: 1 },
+});

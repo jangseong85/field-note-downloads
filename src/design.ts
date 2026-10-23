@@ -1,9 +1,10 @@
 import { StyleSheet } from "react-native";
+import { clinicalMetrics } from "./clinicalTheme";
 
 /** Shared visual scale. Keep platform font scaling enabled on Text/TextInput. */
 export const design = {
-  radius: { control: 12, card: 16 },
-  controlHeight: 48,
+  radius: { control: clinicalMetrics.radius, card: 16 },
+  controlHeight: clinicalMetrics.fieldHeight,
   spacing: { small: 8, medium: 16, large: 24 },
   type: { caption: 12, label: 14, body: 16, section: 18, title: 24 },
 } as const;
@@ -37,6 +38,16 @@ const bodyStyles = new Set([
   "placeholder",
   "modeTitle",
 ]);
+// Memo-specific typography must retain its hierarchy rather than collapse to
+// the generic 14px fallback. Other screens keep their existing normalization.
+const memoTypeStyles = new Set([
+  "patientName", "patientTabText", "patientTabTextSelected", "patientDeleteText",
+  "memoPageTitle", "memoPageCount", "sectionTitle", "memoInput", "vitalLabel",
+  "vitalInput", "unit", "drawButtonText",
+  "birthEntryInput", "birthEntryAge", "genderText", "patientCaptionText",
+  "measurementActionText", "measurementTabText", "historySummaryText",
+  "noteBrandNumber", "noteBrandText", "noteTitle",
+]);
 
 /** Normalize by role, not by screen; preserve circular camera controls and media. */
 export function normalizeDesign<T extends StyleSheet.NamedStyles<T>>(
@@ -45,7 +56,7 @@ export function normalizeDesign<T extends StyleSheet.NamedStyles<T>>(
   return Object.fromEntries(
     Object.entries(source).map(([name, value]) => {
       const style = { ...(value as Record<string, unknown>) };
-      if (typeof style.fontSize === "number") {
+      if (typeof style.fontSize === "number" && !memoTypeStyles.has(name)) {
         const size = titleStyles.has(name)
           ? design.type.title
           : headingStyles.has(name)

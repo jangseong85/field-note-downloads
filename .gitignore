@@ -9,6 +9,7 @@ ios/
 *.key
 *.mobileprovision
 .DS_Store
+# Local environment files and secrets
 .env
 .env.*
 !.env.example
@@ -17,4 +18,9 @@ ios/
 *.ipa
 *.keystore
 credentials.json
+# React Bits Pro: 라이선스상 공개 저장소에 컴포넌트 소스·번들을 올리지 않는다
+web-splash/src/components/react-bits/
+web-splash/dist/
+web-splash/dist-dock/
+assets/web/splash/
 *.log

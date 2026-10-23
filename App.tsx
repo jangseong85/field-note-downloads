@@ -1,6 +1,18 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { normalizeDesign } from "./src/design";
-import SalsPage from "./src/SalsPage";
+import { clinicalTheme } from "./src/clinicalTheme";
+import { MemoAttachment } from "./src/MemoAttachments";
+import { createMediaSaveTask, MediaSaveTask, runMediaSave } from "./src/mediaSave";
+import { planPatientWorkspaceReset, updatePatientById } from "./src/patientUpdates";
+import { addMeasurement, blankMeasurement, deleteMeasurement, normalizeMeasurements, selectMeasurement, snapshotMeasurements, VitalMeasurement } from "./src/vitalMeasurements";
+import { formatTimestamp, parseTimestamp } from "./src/dateTime";
+import { Frame, guideToPhotoCrop } from "./src/cameraCrop";
+import PatientNoteScreen from "./src/PatientNoteScreen";
+import SquishThemeSwitch from "./src/SquishThemeSwitch";
+import RecordAffiliation, { loadSender } from "./src/RecordAffiliation";
+import type { SenderInfo } from "./src/smsMessage";
+import RecordOptionsPopover, { PopoverAnchor } from "./src/RecordOptionsPopover";
+import { CenteredDialog, NoteDialogHost, NoteDialogProvider, NoteModal, useNoteAlert } from "./src/NoteDialogs";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -8,18 +20,17 @@ import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
 import { captureRef } from "react-native-view-shot";
+import { WebView } from "react-native-webview";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Easing,
   Image,
   KeyboardAvoidingView,
-  Modal,
   NativeModules,
   PanResponder,
   Platform,
@@ -39,7 +50,6 @@ import {
 
 void SplashScreen.preventAutoHideAsync();
 
-type VitalKey = "bp" | "pr" | "rr" | "spo2" | "bt" | "bst";
 type IdDocument = {
   uri: string;
   name: string | null;
@@ -47,11 +57,16 @@ type IdDocument = {
   capturedAt: string;
 };
 type FormState = {
+  attachments: MemoAttachment[];
+  vitalMeasurements: VitalMeasurement[];
+  activeMeasurementId: string;
   patientId: string;
   chiefComplaint: string;
   onsetDate: string;
   onsetTime: string;
   measuredAt: string;
+  measuredDate: string;
+  measuredTime: string;
   bp: string;
   pr: string;
   rr: string;
@@ -62,6 +77,10 @@ type FormState = {
   name: string;
   birthDate: string;
   gender: string;
+  patientPhone: string;
+  guardianPhone: string;
+  guardianName: string;
+  guardianRelation: string;
   history: string[];
   idDocument: IdDocument | null;
   chiefComplaintDrawing: string | null;
@@ -77,14 +96,27 @@ type LegacyFormState = Partial<FormState> & {
 };
 
 const STORAGE_KEY = "ems-log.current-patient.v1";
+type PatientRecord = { id: string; form: FormState };
+type PatientWorkspace = { version: 2; activeId: string; patients: PatientRecord[] };
 const THEME_KEY = "ems-log.theme.v1";
+// plugins/withSplashWebAsset.js가 prebuild 때 넣는 단일 HTML 스플래시
+const SPLASH_URI = Platform.OS === "ios"
+  ? `${FileSystem.bundleDirectory ?? ""}field24-splash.html`
+  : "file:///android_asset/splash/index.html";
+const WHEEL_PICKER_KEY = "ems-log.wheel-picker.v1";
+const MEDICAL_TERMS_KEY = "ems-log.medical-terms.v1";
 const ERASER_SIZE_KEY = "ems-log.eraser-size.v1";
 const EMPTY: FormState = {
+  attachments: [],
+  vitalMeasurements: [blankMeasurement("first")],
+  activeMeasurementId: "first",
   patientId: "",
   chiefComplaint: "",
   onsetDate: "",
   onsetTime: "",
   measuredAt: "",
+  measuredDate: "",
+  measuredTime: "",
   bp: "",
   pr: "",
   rr: "",
@@ -95,61 +127,15 @@ const EMPTY: FormState = {
   name: "",
   birthDate: "",
   gender: "",
+  patientPhone: "",
+  guardianPhone: "",
+  guardianName: "",
+  guardianRelation: "",
   history: [],
   idDocument: null,
   chiefComplaintDrawing: null,
   historyDrawing: null,
 };
-const HISTORY_PRIMARY_OPTIONS = ["고혈압", "당뇨", "고지혈증"];
-const CEREBROVASCULAR_OPTIONS = ["뇌경색", "뇌출혈"];
-const CARDIOVASCULAR_OPTIONS = ["협심증", "심근경색"];
-const HISTORY_RESPIRATORY_OPTIONS = ["천식", "COPD"];
-const DIALYSIS_OPTIONS = ["투석 월·수·금", "투석 화·목·토"];
-const HISTORY_LAST_OPTIONS = ["암", "치매", "우울증"];
-
-function historySummary(history: string[]): string {
-  const dialysis = history.find((item) => DIALYSIS_OPTIONS.includes(item));
-  const entries = history
-    .filter((item) => !DIALYSIS_OPTIONS.includes(item))
-    .map((item) =>
-      item === "신부전" && dialysis ? `신부전(${dialysis})` : item,
-    );
-  return entries.length > 0 ? `과거력: ${entries.join(", ")}` : "";
-}
-
-function updateHistoryMemo(
-  previousHistory: string[],
-  nextHistory: string[],
-  memo: string,
-): string {
-  const previousSummary = historySummary(previousHistory);
-  const nextSummary = historySummary(nextHistory);
-
-  if (previousSummary && memo.startsWith(previousSummary)) {
-    const suffix = memo.slice(previousSummary.length);
-    const userText = suffix.startsWith("\n")
-      ? suffix
-      : `\n${suffix.replace(/^ /, "")}`;
-    return nextSummary ? `${nextSummary}${userText}` : userText.slice(1);
-  }
-
-  if (!nextSummary) return memo;
-  return memo.length > 0 ? `${nextSummary}\n${memo}` : `${nextSummary}\n`;
-}
-
-const VITALS: {
-  key: VitalKey;
-  label: string;
-  unit: string;
-  decimal?: boolean;
-}[] = [
-  { key: "bp", label: "BP", unit: "mmHg" },
-  { key: "pr", label: "PR", unit: "회/분" },
-  { key: "rr", label: "RR", unit: "회/분" },
-  { key: "spo2", label: "SpO₂", unit: "%" },
-  { key: "bt", label: "BT", unit: "°C", decimal: true },
-  { key: "bst", label: "BST", unit: "mg/dL" },
-];
 
 function koreanNow(): string {
   const parts = new Intl.DateTimeFormat("ko-KR", {
@@ -175,13 +161,6 @@ function displayBirthDate(value: string | null): string {
   return `${digits.slice(0, 4)}. ${digits.slice(4, 6)}. ${digits.slice(6)}${digits.length === 8 ? "." : ""}`;
 }
 
-function updateBirthDate(previous: string, input: string): string {
-  const digits = input.replace(/\D/g, "").slice(0, 8);
-  if (input.length < displayBirthDate(previous).length && digits === previous)
-    return previous.slice(0, -1);
-  return digits;
-}
-
 function formatBloodPressure(previousValue: string, value: string): string {
   if (previousValue.endsWith("/") && value === previousValue.slice(0, -1))
     return value;
@@ -200,94 +179,6 @@ function formatBodyTemperature(previousValue: string, value: string): string {
   return `${digits.slice(0, 2)}.${digits.slice(2)}`;
 }
 
-function displayOnsetTime(value: string): string {
-  const digits = value.replace(/\D/g, "").slice(0, 4);
-  return digits.length <= 2
-    ? digits
-    : `${digits.slice(0, 2)}:${digits.slice(2)}`;
-}
-
-function displayOnsetDate(value: string): string {
-  const digits = value.replace(/\D/g, "").slice(0, 8);
-  if (digits.length <= 4) return digits.length === 4 ? `${digits}. ` : digits;
-  if (digits.length <= 6)
-    return `${digits.slice(0, 4)}. ${digits.slice(4)}${digits.length === 6 ? ". " : ""}`;
-  return `${digits.slice(0, 4)}. ${digits.slice(4, 6)}. ${digits.slice(6)}${digits.length === 8 ? "." : ""}`;
-}
-
-function displayMeasuredAt(value: string): string {
-  const match = value.match(
-    /^(\d{4})\.\s*(\d{2})\.\s*(\d{2})\.?\s+(\d{2}:\d{2})$/,
-  );
-  return match ? `${match[1]}. ${match[2]}. ${match[3]}. ${match[4]}` : value;
-}
-
-function onsetWeekdayText(date: string): string | null {
-  if (date.length !== 8) return null;
-  const year = Number(date.slice(0, 4));
-  const month = Number(date.slice(4, 6));
-  const day = Number(date.slice(6, 8));
-  const parsed = new Date(year, month - 1, day, 12);
-  if (
-    year < 1900 ||
-    parsed.getFullYear() !== year ||
-    parsed.getMonth() !== month - 1 ||
-    parsed.getDate() !== day
-  )
-    return null;
-  return (
-    ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"][
-      parsed.getDay()
-    ] ?? null
-  );
-}
-
-function onsetElapsedText(
-  date: string,
-  time: string,
-  now: Date,
-): string | null {
-  if (date.length !== 8 || time.length !== 4) return null;
-  const year = Number(date.slice(0, 4));
-  const month = Number(date.slice(4, 6));
-  const day = Number(date.slice(6, 8));
-  const hour = Number(time.slice(0, 2));
-  const minute = Number(time.slice(2));
-  const onset = new Date(year, month - 1, day, hour, minute);
-  if (
-    year < 1900 ||
-    onset.getFullYear() !== year ||
-    onset.getMonth() !== month - 1 ||
-    onset.getDate() !== day ||
-    hour > 23 ||
-    minute > 59
-  )
-    return "올바른 날짜와 시각을 입력해 주세요";
-  const elapsedMinutes = Math.floor((now.getTime() - onset.getTime()) / 60000);
-  if (elapsedMinutes < 0) return "현재보다 늦은 시각입니다";
-  if (elapsedMinutes === 0) return null;
-  if (elapsedMinutes < 60) return `${elapsedMinutes}분 전`;
-  const days = Math.floor(elapsedMinutes / (24 * 60));
-  const hours = Math.floor(elapsedMinutes / 60);
-  const minutes = elapsedMinutes % 60;
-  if (days > 0) {
-    const remainingHours = hours % 24;
-    return remainingHours > 0
-      ? `${days}일 ${remainingHours}시간 전`
-      : `${days}일 전`;
-  }
-  return minutes > 0 ? `${hours}시간 ${minutes}분 전` : `${hours}시간 전`;
-}
-
-function calculateMap(value: string): number | null {
-  const match = value.match(/^(\d{2,3})\/(\d{2,3})$/);
-  if (!match) return null;
-  const systolic = Number(match[1]);
-  const diastolic = Number(match[2]);
-  return systolic > 0 && diastolic > 0
-    ? Math.round((systolic + 2 * diastolic) / 3)
-    : null;
-}
 
 function migrateStoredForm(stored: LegacyFormState): FormState {
   const storedWithoutVitalRecords = { ...stored };
@@ -320,15 +211,37 @@ function migrateStoredForm(stored: LegacyFormState): FormState {
   return {
     ...EMPTY,
     ...storedWithoutVitalRecords,
+    attachments: Array.isArray(stored.attachments) ? stored.attachments.filter(item => item && typeof item.id === "string" && typeof item.uri === "string" && (item.kind === "photo" || item.kind === "audio")) : [],
+    ...normalizeMeasurements(stored.vitalMeasurements, stored.activeMeasurementId),
+    measuredDate: stored.measuredDate ?? parseTimestamp(stored.measuredAt ?? "").date,
+    measuredTime: stored.measuredTime ?? parseTimestamp(stored.measuredAt ?? "").time,
     patientId,
     chiefComplaint,
-    historyMemo: stored.historyMemo || historyLines.join("\n"),
+    historyMemo: typeof stored.historyMemo === "string" ? stored.historyMemo : historyLines.join("\n"),
     history: stored.history ?? [],
     idDocument: stored.idDocument ?? null,
   };
 }
 
 export default function App() {
+  return <NoteDialogProvider><FieldNoteApp /></NoteDialogProvider>;
+}
+
+function FieldNoteApp() {
+  const Alert = { alert: useNoteAlert() };
+  const [optionsVisible, setOptionsVisible] = useState(false);
+  const optionsButtonRef = useRef<View>(null);
+  const [optionsAnchor, setOptionsAnchor] = useState<PopoverAnchor | null>(null);
+  const openOptions = () => {
+    if (Platform.OS !== "ios" || !optionsButtonRef.current) {
+      setOptionsVisible(true);
+      return;
+    }
+    optionsButtonRef.current.measureInWindow((x, y, width, height) => {
+      setOptionsAnchor({ x, y, width, height });
+      setOptionsVisible(true);
+    });
+  };
   const [fontsLoaded, fontError] = useFonts({
     "Pretendard-Regular": require("pretendard/dist/public/static/Pretendard-Regular.otf"),
     "Pretendard-Medium": require("pretendard/dist/public/static/Pretendard-Medium.otf"),
@@ -337,6 +250,14 @@ export default function App() {
   });
   const systemColorScheme = useColorScheme();
   const [form, setForm] = useState<FormState>(EMPTY);
+  const [patients, setPatients] = useState<PatientRecord[]>([{ id: "initial", form: EMPTY }]);
+  const [activePatientId, setActivePatientId] = useState("initial");
+  const workspaceRef = useRef<PatientWorkspace>({ version: 2, activeId: activePatientId, patients });
+  workspaceRef.current = { version: 2, activeId: activePatientId, patients: patients.map(patient => patient.id === activePatientId ? { ...patient, form } : patient) };
+  const drawingSaveBusy = useRef(false);
+  const drawingSaveTask = useRef<{ patientId: string; field: "chiefComplaintDrawing" | "historyDrawing"; previousUri: string | null; task: MediaSaveTask<string> } | null>(null);
+  const [deletingPatient, setDeletingPatient] = useState(false);
+  const [mediaBusy, setMediaBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark">(
     "system",
@@ -346,9 +267,47 @@ export default function App() {
   const patientSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resettingPatient = useRef(false);
   const [activeTab, setActiveTab] = useState<
-    "memo" | "sals" | "mci" | "settings"
+    "memo" | "mci" | "settings"
   >("memo");
   const [scannerBusy, setScannerBusy] = useState(false);
+  const [sender, setSender] = useState<SenderInfo>({ affiliation: "", rank: "", name: "" });
+  const affiliation = sender.affiliation;
+  const [useWheelPicker, setUseWheelPicker] = useState(true);
+  const [wheelPreferenceReady, setWheelPreferenceReady] = useState(false);
+  const wheelPreferenceSaving = useRef(false);
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem(WHEEL_PICKER_KEY).then(value => {
+      if (active) { setUseWheelPicker(value !== "false"); setWheelPreferenceReady(true); }
+    }).catch(() => { if (active) setWheelPreferenceReady(true); });
+    return () => { active = false; };
+  }, []);
+  const changeWheelPreference = async (enabled: boolean) => {
+    if (!wheelPreferenceReady || wheelPreferenceSaving.current) return;
+    wheelPreferenceSaving.current = true;
+    try { await AsyncStorage.setItem(WHEEL_PICKER_KEY, String(enabled)); setUseWheelPicker(enabled); }
+    catch { Alert.alert("입력 방식", "설정 저장에 실패했습니다. 다시 시도해 주세요."); }
+    finally { wheelPreferenceSaving.current = false; }
+  };
+  const [medicalTerms, setMedicalTerms] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem(MEDICAL_TERMS_KEY).then(value => { if (active) setMedicalTerms(value === "true"); }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+  const changeMedicalTerms = async (enabled: boolean) => {
+    setMedicalTerms(enabled);
+    try { await AsyncStorage.setItem(MEDICAL_TERMS_KEY, String(enabled)); }
+    catch { setMedicalTerms(!enabled); Alert.alert("용어 표시", "설정 저장에 실패했습니다. 다시 시도해 주세요."); }
+  };
+  useEffect(() => {
+    let active = true;
+    void loadSender().then(value => { if (active) setSender(value); }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+  const [cameraLayout, setCameraLayout] = useState({ width: 0, height: 0 });
+  const [guideTop, setGuideTop] = useState(0);
+  const [guideFrame, setGuideFrame] = useState<Frame>({ x: 0, y: 0, width: 0, height: 0 });
   const [cameraVisible, setCameraVisible] = useState(false);
   const [drawingTarget, setDrawingTarget] = useState<
     "chiefComplaintDrawing" | "historyDrawing" | null
@@ -356,22 +315,13 @@ export default function App() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const [showIntro, setShowIntro] = useState(true);
-  const introDim = useRef(new Animated.Value(0.56)).current;
   const introOpacity = useRef(new Animated.Value(1)).current;
-  const introScale = useRef(new Animated.Value(1.025)).current;
+  const introFinishing = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
-  const sectionY = useRef({
-    patientId: 0,
-    chiefComplaint: 0,
-    vitals: 0,
-    historyMemo: 0,
-  });
   const isDark =
     themeMode === "system"
       ? systemColorScheme === "dark"
       : themeMode === "dark";
-  const map = calculateMap(form.bp);
-  const isMapLow = map !== null && map < 65;
 
   useEffect(() => {
     Promise.all([
@@ -386,8 +336,19 @@ export default function App() {
         )
           setThemeMode(savedTheme);
         if (saved) {
-          const storedForm = JSON.parse(saved) as LegacyFormState;
-          setForm(migrateStoredForm(storedForm));
+          const stored = JSON.parse(saved) as PatientWorkspace & LegacyFormState;
+          if (stored.version === 2 && Array.isArray(stored.patients) && stored.patients.length > 0) {
+            const restored = stored.patients.map((patient) => ({ id: patient.id, form: migrateStoredForm(patient.form) }));
+            const active = restored.find((patient) => patient.id === stored.activeId) ?? restored[0];
+            if (!active) throw new Error("No saved patient");
+            setPatients(restored);
+            setActivePatientId(active.id);
+            setForm(active.form);
+          } else {
+            const restored = migrateStoredForm(stored);
+            setPatients([{ id: "initial", form: restored }]);
+            setForm(restored);
+          }
         }
         await AsyncStorage.multiRemove([
           "ems-log.input-mode.v1",
@@ -412,7 +373,7 @@ export default function App() {
       patientSaveTimer.current = null;
       patientSaveQueue.current = patientSaveQueue.current
         .catch(() => undefined)
-        .then(() => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(form)));
+        .then(() => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(workspaceRef.current)));
       void patientSaveQueue.current.catch(() =>
         Alert.alert("저장 안내", "입력 내용의 임시 저장에 실패했습니다."),
       );
@@ -422,70 +383,58 @@ export default function App() {
       clearTimeout(timer);
       if (patientSaveTimer.current === timer) patientSaveTimer.current = null;
     };
-  }, [form, loaded, fontsLoaded, fontError]);
+  }, [form, patients, activePatientId, loaded, fontsLoaded, fontError]);
+
+  const commitPatientUpdate = async (patientId: string, updateForm: (previous: FormState) => FormState) => {
+    const task = patientSaveQueue.current.catch(() => undefined).then(async () => {
+      const snapshot = updatePatientById(workspaceRef.current, patientId, updateForm);
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+      // Preserve any typing that happened during the storage write.
+      const latest = updatePatientById(workspaceRef.current, patientId, updateForm);
+      workspaceRef.current = latest;
+      setPatients(latest.patients);
+      if (latest.activeId === patientId) setForm(previous => updateForm(previous));
+    });
+    patientSaveQueue.current = task;
+    await task;
+  };
+
+  const selectPatient = (id?: string) => {
+    if (!loaded || scannerBusy || mediaBusy || drawingSaveBusy.current || resettingPatient.current || drawingTarget || cameraVisible) return;
+    const current = patients.map((patient) => patient.id === activePatientId ? { ...patient, form } : patient);
+    const target = id ? current.find((patient) => patient.id === id) : { id: `patient-${Date.now()}`, form: { ...EMPTY, history: [] } };
+    if (!target) return;
+    setPatients(id ? current : [...current, target]);
+    setActivePatientId(target.id);
+    setForm(target.form);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  };
+
+  const finishIntro = useCallback(() => {
+    if (introFinishing.current) return;
+    introFinishing.current = true;
+    Animated.timing(introOpacity, {
+      toValue: 0,
+      duration: 360,
+      easing: Easing.inOut(Easing.quad),
+      useNativeDriver: true,
+    }).start(({ finished }) => finished && setShowIntro(false));
+  }, [introOpacity]);
 
   useEffect(() => {
     if (!loaded) return;
     void SplashScreen.hideAsync();
-    const animation = Animated.sequence([
-      Animated.parallel([
-        Animated.timing(introDim, {
-          toValue: 0,
-          duration: 1050,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(introScale, {
-          toValue: 1,
-          duration: 1250,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.delay(450),
-      Animated.timing(introOpacity, {
-        toValue: 0,
-        duration: 360,
-        easing: Easing.inOut(Easing.quad),
-        useNativeDriver: true,
-      }),
-    ]);
-    animation.start(({ finished }) => finished && setShowIntro(false));
-    return () => animation.stop();
-  }, [fontError, fontsLoaded, introDim, introOpacity, introScale, loaded]);
+    const fallback = setTimeout(finishIntro, 5700);
+    return () => clearTimeout(fallback);
+  }, [finishIntro, loaded]);
 
   const update = (key: keyof FormState, value: string) =>
     setForm((previous) => ({ ...previous, [key]: value }));
-  const reveal = (key: keyof typeof sectionY.current) =>
-    setTimeout(
-      () =>
-        scrollRef.current?.scrollTo({
-          y: Math.max(0, sectionY.current[key] - 55),
-          animated: true,
-        }),
-      120,
-    );
-  const toggleTheme = () => {
-    const nextMode = isDark ? "light" : "dark";
+  const changeTheme = (dark: boolean) => {
+    const nextMode = dark ? "dark" : "light";
     setThemeMode(nextMode);
-    void AsyncStorage.setItem(THEME_KEY, nextMode);
+    void AsyncStorage.setItem(THEME_KEY, nextMode).catch(() => Alert.alert("화면 설정", "화면 모드 설정을 저장하지 못했습니다. 다시 선택해 주세요."));
   };
-  const toggleHistoryItem = (item: string) =>
-    setForm((previous) => {
-      const selected = previous.history.includes(item);
-      const history = selected
-        ? previous.history.filter((value) => value !== item)
-        : [...previous.history, item];
-      return {
-        ...previous,
-        history,
-        historyMemo: updateHistoryMemo(
-          previous.history,
-          history,
-          previous.historyMemo,
-        ),
-      };
-    });
   const deleteDocument = async () => {
     const uri = form.idDocument?.uri;
     setForm((previous) => ({ ...previous, idDocument: null }));
@@ -498,16 +447,70 @@ export default function App() {
     uri
       ? FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined)
       : Promise.resolve();
+  const requestDeletePatient = () => {
+    if (!loaded || scannerBusy || mediaBusy || resettingPatient.current || cameraVisible || drawingTarget) return;
+    const index = patients.findIndex((patient) => patient.id === activePatientId);
+    const label = form.name.trim() || `환자 ${index + 1}`;
+    Alert.alert(`${label} 기록 삭제`, "이 환자의 입력 내용과 촬영·필기 자료를 삭제합니다. 다른 환자 기록은 유지됩니다. 삭제 후에는 복구할 수 없습니다.", [
+      { text: "취소", style: "cancel" },
+      { text: "삭제", style: "destructive", onPress: async () => {
+        if (resettingPatient.current) return;
+        resettingPatient.current = true;
+        setDeletingPatient(true);
+        if (patientSaveTimer.current) clearTimeout(patientSaveTimer.current);
+        patientSaveTimer.current = null;
+        const remaining = patients.filter((patient) => patient.id !== activePatientId);
+        const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)] ?? { id: `patient-${Date.now()}`, form: { ...EMPTY, history: [] } };
+        const nextPatients = remaining.length ? remaining : [next];
+        try {
+          patientSaveQueue.current = patientSaveQueue.current.catch(() => undefined).then(() => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, activeId: next.id, patients: nextPatients })));
+          await patientSaveQueue.current;
+          setPatients(nextPatients);
+          setActivePatientId(next.id);
+          setForm(next.form);
+          const retainedUris = new Set(nextPatients.flatMap((patient) => [patient.form.idDocument?.uri, patient.form.chiefComplaintDrawing, patient.form.historyDrawing, ...patient.form.attachments.map(item => item.uri)]));
+          await Promise.all([form.idDocument?.uri, form.chiefComplaintDrawing, form.historyDrawing, ...form.attachments.map(item => item.uri)].filter((uri): uri is string => !!uri && !retainedUris.has(uri)).map(deleteLocalFile));
+          scrollRef.current?.scrollTo({ y: 0, animated: true });
+        } catch {
+          Alert.alert("삭제 실패", "기록을 삭제하지 못했습니다. 기존 기록은 유지됩니다. 다시 시도해 주세요.");
+        } finally {
+          resettingPatient.current = false;
+          setDeletingPatient(false);
+        }
+      } },
+    ]);
+  };
   const saveDrawing = async (temporaryUri: string) => {
-    if (!drawingTarget) return;
-    const directory = `${FileSystem.documentDirectory}handwritten-notes/`;
-    await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
-    const savedUri = `${directory}${drawingTarget}-${Date.now()}.png`;
-    await FileSystem.copyAsync({ from: temporaryUri, to: savedUri });
-    const previousUri = form[drawingTarget];
-    setForm((previous) => ({ ...previous, [drawingTarget]: savedUri }));
+    if (drawingSaveBusy.current) throw new Error("Drawing save already in progress");
+    if (!drawingTarget || !FileSystem.documentDirectory) throw new Error("Drawing target unavailable");
+    drawingSaveBusy.current = true;
+    try {
+      if (!drawingSaveTask.current) {
+        const field = drawingTarget;
+        drawingSaveTask.current = {
+          patientId: activePatientId, field, previousUri: form[field],
+          task: createMediaSaveTask(temporaryUri, `${FileSystem.documentDirectory}handwritten-notes/`, `${field}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`, uri => uri),
+        };
+      }
+      const pending = drawingSaveTask.current;
+      await runMediaSave(pending.task, FileSystem, savedUri => commitPatientUpdate(pending.patientId, previous => ({ ...previous, [pending.field]: savedUri })));
+      drawingSaveTask.current = null;
+      setDrawingTarget(null);
+      const retained = workspaceRef.current.patients.some(patient => patient.form.chiefComplaintDrawing === pending.previousUri || patient.form.historyDrawing === pending.previousUri);
+      if (!retained) await deleteLocalFile(pending.previousUri);
+    } finally {
+      drawingSaveBusy.current = false;
+    }
+  };
+  const closeDrawing = async () => {
+    if (drawingSaveBusy.current) return;
+    const pending = drawingSaveTask.current;
+    if (pending && !pending.task.committed) {
+      try { await FileSystem.deleteAsync(pending.task.moved ? pending.task.savedUri : pending.task.sourceUri, { idempotent: true }); }
+      catch { Alert.alert("임시 파일 정리 실패", "다시 닫기를 눌러 주세요. 저장된 기존 필기는 유지됩니다."); return; }
+    }
+    drawingSaveTask.current = null;
     setDrawingTarget(null);
-    void deleteLocalFile(previousUri);
   };
   const deleteDrawing = (key: "chiefComplaintDrawing" | "historyDrawing") => {
     const uri = form[key];
@@ -516,40 +519,43 @@ export default function App() {
   };
   const reset = () =>
     Alert.alert(
-      "입력 내용 초기화",
-      "현재 입력 내용과 촬영·필기 자료를 모두 지울까요?",
+      "환자 기록 전체 초기화",
+      "등록된 모든 환자의 인적사항, 주증상, 활력징후, 병력·메모와 사진·녹취·필기 자료가 삭제됩니다. 삭제 후에는 복구할 수 없습니다. 전체 초기화할까요?",
       [
         { text: "취소", style: "cancel" },
         {
-          text: "지우기",
+          text: "전체 초기화",
           style: "destructive",
           onPress: async () => {
             if (resettingPatient.current) return;
-            if (scannerBusy) {
+            if (scannerBusy || mediaBusy || drawingSaveBusy.current || cameraVisible || drawingTarget) {
               Alert.alert(
                 "초기화 안내",
-                "신분증 인식이 끝난 후 초기화해 주세요.",
+                "촬영이나 녹취를 마친 후 초기화해 주세요.",
               );
               return;
             }
             resettingPatient.current = true;
+            setDeletingPatient(true);
             if (patientSaveTimer.current)
               clearTimeout(patientSaveTimer.current);
             patientSaveTimer.current = null;
+            const blank = { id: `patient-reset-${Date.now()}`, form: { ...EMPTY, history: [], attachments: [], vitalMeasurements: [blankMeasurement("first")] } };
+            const { next, uris } = planPatientWorkspaceReset(workspaceRef.current, blank);
             try {
               // Queue behind older writes so they cannot restore pre-reset data.
               patientSaveQueue.current = patientSaveQueue.current
                 .catch(() => undefined)
                 .then(() =>
-                  AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(EMPTY)),
+                  AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)),
                 );
               await patientSaveQueue.current;
-              setForm(EMPTY);
-              await Promise.all([
-                deleteLocalFile(form.idDocument?.uri ?? null),
-                deleteLocalFile(form.chiefComplaintDrawing),
-                deleteLocalFile(form.historyDrawing),
-              ]);
+              workspaceRef.current = next;
+              setPatients(next.patients);
+              setActivePatientId(next.activeId);
+              setForm(blank.form);
+              scrollRef.current?.scrollTo({ y: 0, animated: true });
+              await Promise.all(uris.map(deleteLocalFile));
             } catch {
               Alert.alert(
                 "초기화 실패",
@@ -557,6 +563,7 @@ export default function App() {
               );
             } finally {
               resettingPatient.current = false;
+              setDeletingPatient(false);
             }
           },
         },
@@ -581,6 +588,10 @@ export default function App() {
     setScannerBusy(true);
     const pendingFiles = new Set<string>();
     try {
+      // Freeze the measured preview/guide before the camera closes or layouts change.
+      const viewport = { ...cameraLayout };
+      const guide = { ...guideFrame, y: guideTop + guideFrame.y };
+      if (!viewport.width || !viewport.height || !guide.width || !guide.height) throw new Error("촬영 가이드가 준비되지 않았습니다. 잠시 후 다시 촬영해 주세요.");
       const photo = await cameraRef.current?.takePictureAsync({
         quality: 1,
         skipProcessing: false,
@@ -595,30 +606,10 @@ export default function App() {
       const capturedSource = await ImageManipulator.ImageManipulator.manipulate(
         photo.uri,
       ).renderAsync();
-      const portrait = capturedSource.height >= capturedSource.width;
-      const cropWidth = Math.floor(
-        capturedSource.width * (portrait ? 0.62 : 0.9),
-      );
-      const cropHeight = Math.min(
-        capturedSource.height,
-        Math.floor(cropWidth / 1.58),
-      );
-      const preparedContext = ImageManipulator.ImageManipulator.manipulate(
-        photo.uri,
-      );
-      preparedContext.crop({
-        originX: Math.max(
-          0,
-          Math.floor((capturedSource.width - cropWidth) / 2),
-        ),
-        originY: Math.max(
-          0,
-          Math.floor((capturedSource.height - cropHeight) / 2),
-        ),
-        width: cropWidth,
-        height: cropHeight,
-      });
-      if (cropWidth < 1800)
+      const crop = guideToPhotoCrop(capturedSource, viewport, guide);
+      const preparedContext = ImageManipulator.ImageManipulator.manipulate(photo.uri);
+      preparedContext.crop(crop);
+      if (crop.width < 1800)
         preparedContext.resize({ width: 1800, height: null });
       const preparedRef = await preparedContext.renderAsync();
       const preparedImage = await preparedRef.saveAsync({
@@ -731,309 +722,66 @@ export default function App() {
   if (!loaded || (!fontsLoaded && !fontError))
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#087F6D" />
+        <ActivityIndicator size="large" color="#C9232D" />
       </View>
     );
   return (
     <SafeAreaProvider>
       <View style={[styles.flex, isDark && darkStyles.appBackground]}>
         <SafeAreaView
-          style={[styles.safe, isDark && darkStyles.safe]}
+          style={[styles.safe, { backgroundColor: clinicalTheme(isDark).page }]}
           edges={["top", "bottom"]}
         >
           <StatusBar style={isDark ? "light" : "dark"} />
           <KeyboardAvoidingView
             style={styles.flex}
+            pointerEvents={deletingPatient ? "none" : "auto"}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 12}
           >
             <ScrollView
               ref={scrollRef}
               style={styles.flex}
-              contentContainerStyle={styles.page}
+              contentContainerStyle={[styles.page, Platform.OS === "ios" && styles.pageUnderFloatingNav]}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
             >
-              <View style={styles.header}>
-                <Text style={[styles.title, isDark && darkStyles.primaryText]}>
-                  119 구급대원 메모장
-                </Text>
-                <View style={styles.headerActions}>
-                  <Pressable
-                    onPress={toggleTheme}
-                    style={[styles.iconButton, isDark && darkStyles.softButton]}
-                  >
-                    <Ionicons
-                      name={isDark ? "sunny-outline" : "moon-outline"}
-                      size={18}
-                      color={isDark ? "#D8E7E3" : "#315C54"}
-                    />
-                  </Pressable>
-                  {activeTab === "memo" && (
-                    <Pressable
-                      onPress={reset}
-                      style={[
-                        styles.resetButton,
-                        isDark && darkStyles.softButton,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.resetText,
-                          isDark && darkStyles.softButtonText,
-                        ]}
-                      >
-                        초기화
-                      </Text>
-                    </Pressable>
-                  )}
-                </View>
+              <View style={styles.noteAppHeader}>
+                <View style={{ flex: 1, minWidth: 0, gap: 6 }}><View style={styles.noteBrand}><Text style={[styles.noteBrandNumber, { color: clinicalTheme(isDark).brand }]}>119</Text><Text style={[styles.noteBrandText, { color: clinicalTheme(isDark).muted }, Platform.OS === "ios" && { fontSize: 12, letterSpacing: 1.2 }]}>FIELD NOTE</Text></View>{!!affiliation && <Text style={Platform.OS === "ios" ? { color: clinicalTheme(isDark).ink, fontSize: 30, fontFamily: "Pretendard-Bold", letterSpacing: -0.6 } : { color: clinicalTheme(isDark).ink, fontSize: 18, fontFamily: "Pretendard-SemiBold" }}>{affiliation}</Text>}{activeTab !== "memo" && <Text style={[styles.noteTitle, { color: clinicalTheme(isDark).ink }]}>{activeTab === "settings" ? "설정" : "다수사상자"}</Text>}</View>
+                <Pressable ref={optionsButtonRef} accessibilityRole="button" accessibilityLabel="화면 및 기록 옵션" onPress={openOptions} style={[styles.noteHeaderMenu, Platform.OS === "ios" && { borderRadius: 22, backgroundColor: clinicalTheme(isDark).field }]}><Ionicons name="ellipsis-horizontal" size={Platform.OS === "ios" ? 20 : 23} color={clinicalTheme(isDark).ink} /></Pressable>
               </View>
               {activeTab === "memo" ? (
-                <>
-                  <AdvancedPatient
-                    form={form}
-                    isDark={isDark}
-                    update={update}
-                    onScan={() => void openIdentityCamera()}
-                    onDeleteDocument={() => void deleteDocument()}
-                    scannerBusy={scannerBusy}
-                    onLayout={(y) => {
-                      sectionY.current.patientId = y;
-                    }}
-                  />
-                  <MemoCard
-                    step="2"
-                    title="Chief Complaint"
-                    value={form.chiefComplaint}
-                    onsetDate={form.onsetDate}
-                    onsetTime={form.onsetTime}
-                    drawingUri={form.chiefComplaintDrawing}
-                    placeholder="주증상과 증상 경과를 기록하세요"
-                    isDark={isDark}
-                    onChangeOnsetDate={(value) =>
-                      update("onsetDate", value.replace(/\D/g, "").slice(0, 8))
-                    }
-                    onChangeOnsetTime={(value) =>
-                      update("onsetTime", value.replace(/\D/g, "").slice(0, 4))
-                    }
-                    onDraw={() => setDrawingTarget("chiefComplaintDrawing")}
-                    onDeleteDrawing={() =>
-                      deleteDrawing("chiefComplaintDrawing")
-                    }
-                    onChange={(value) => update("chiefComplaint", value)}
-                    onFocus={() => reveal("chiefComplaint")}
-                    onLayout={(y) => {
-                      sectionY.current.chiefComplaint = y;
-                    }}
-                  />
-                  <View
-                    style={[styles.card, isDark && darkStyles.card]}
-                    onLayout={(event) => {
-                      sectionY.current.vitals = event.nativeEvent.layout.y;
-                    }}
-                  >
-                    <SectionHeading
-                      step="3"
-                      title="Vital Signs"
-                      isDark={isDark}
-                    />
-                    <Text
-                      style={[styles.label, isDark && darkStyles.secondaryText]}
-                    >
-                      측정 시각
-                    </Text>
-                    <View style={styles.timeRow}>
-                      <View
-                        style={[styles.timeDisplay, isDark && darkStyles.input]}
-                      >
-                        <Text
-                          style={[
-                            form.measuredAt
-                              ? styles.timeValue
-                              : styles.placeholder,
-                            isDark &&
-                              (form.measuredAt
-                                ? darkStyles.primaryText
-                                : darkStyles.placeholderText),
-                          ]}
-                        >
-                          {form.measuredAt
-                            ? displayMeasuredAt(form.measuredAt)
-                            : "YYYY. MM. DD. HH:MM"}
-                        </Text>
-                      </View>
-                      <Pressable
-                        style={styles.nowButton}
-                        onPress={() => update("measuredAt", koreanNow())}
-                      >
-                        <Text style={styles.nowText}>현재</Text>
-                      </Pressable>
-                    </View>
-                    <View
-                      style={[styles.divider, isDark && darkStyles.divider]}
-                    />
-                    <View style={styles.grid}>
-                      {VITALS.map((vital, index) => (
-                        <View
-                          key={vital.key}
-                          style={[styles.vitalBox, isDark && darkStyles.input]}
-                        >
-                          <View style={styles.vitalTop}>
-                            <Text
-                              style={[
-                                styles.vitalLabel,
-                                isDark && darkStyles.accentText,
-                              ]}
-                            >
-                              {vital.label}
-                            </Text>
-                            <Text
-                              style={[
-                                styles.unit,
-                                isDark && darkStyles.tertiaryText,
-                              ]}
-                            >
-                              {vital.unit}
-                            </Text>
-                          </View>
-                          <View style={styles.vitalValueRow}>
-                            <TextInput
-                              value={form[vital.key]}
-                              onChangeText={(value) =>
-                                vital.key === "bp"
-                                  ? setForm((previous) => ({
-                                      ...previous,
-                                      bp: formatBloodPressure(
-                                        previous.bp,
-                                        value,
-                                      ),
-                                    }))
-                                  : vital.key === "bt"
-                                    ? setForm((previous) => ({
-                                        ...previous,
-                                        bt: formatBodyTemperature(
-                                          previous.bt,
-                                          value,
-                                        ),
-                                      }))
-                                    : update(vital.key, value)
-                              }
-                              onFocus={() =>
-                                setTimeout(
-                                  () =>
-                                    scrollRef.current?.scrollTo({
-                                      y: Math.max(
-                                        0,
-                                        sectionY.current.vitals +
-                                          Math.floor(index / 2) * 108 -
-                                          90,
-                                      ),
-                                      animated: true,
-                                    }),
-                                  120,
-                                )
-                              }
-                              keyboardType={
-                                vital.decimal ? "decimal-pad" : "number-pad"
-                              }
-                              maxLength={
-                                vital.key === "bp"
-                                  ? 7
-                                  : vital.key === "bt"
-                                    ? 4
-                                    : undefined
-                              }
-                              style={[
-                                styles.vitalInput,
-                                isDark && darkStyles.primaryText,
-                              ]}
-                            />
-                          </View>
-                          {vital.key === "bp" && (
-                            <View
-                              style={[
-                                styles.mapBadge,
-                                map === null && styles.mapBadgeEmpty,
-                                isDark && darkStyles.mapBadge,
-                                isMapLow && styles.mapBadgeDanger,
-                                isDark && isMapLow && darkStyles.mapBadgeDanger,
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.mapLabel,
-                                  isDark && darkStyles.accentText,
-                                  isMapLow && styles.dangerText,
-                                  isDark && isMapLow && darkStyles.dangerText,
-                                ]}
-                              >
-                                MAP
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.mapValue,
-                                  isDark && darkStyles.primaryText,
-                                  map === null && styles.mapEmpty,
-                                  isDark &&
-                                    map === null &&
-                                    darkStyles.emptyText,
-                                  isMapLow && styles.dangerText,
-                                  isDark && isMapLow && darkStyles.dangerText,
-                                ]}
-                              >
-                                {map ?? "—"}
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.mapUnit,
-                                  isDark && darkStyles.tertiaryText,
-                                  isMapLow && styles.dangerSubText,
-                                  isDark &&
-                                    isMapLow &&
-                                    darkStyles.dangerSubText,
-                                ]}
-                              >
-                                mmHg
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                  <MemoCard
-                    step="4"
-                    title="History"
-                    value={form.historyMemo}
-                    drawingUri={form.historyDrawing}
-                    placeholder="과거력, 복용약, 수술력, 알레르기 등을 기록하세요"
-                    isDark={isDark}
-                    historyOptions
-                    selectedOptions={form.history}
-                    onToggleOption={toggleHistoryItem}
-                    tall
-                    onDraw={() => setDrawingTarget("historyDrawing")}
-                    onDeleteDrawing={() => deleteDrawing("historyDrawing")}
-                    onChange={(value) => update("historyMemo", value)}
-                    onFocus={() => reveal("historyMemo")}
-                    onLayout={(y) => {
-                      sectionY.current.historyMemo = y;
-                    }}
-                  />
-                </>
+                <PatientNoteScreen isDark={isDark} form={form} useWheelPicker={useWheelPicker}
+                  patients={patients.map((patient, index) => ({ id: patient.id, label: (patient.id === activePatientId ? form.name : patient.form.name).trim() || `환자 ${index + 1}` }))} activePatientId={activePatientId}
+                  measurements={snapshotMeasurements(form)}
+                  busy={scannerBusy || deletingPatient} mediaBusy={mediaBusy} onSelectPatient={selectPatient} onAddPatient={() => selectPatient()} onDeletePatient={requestDeletePatient} onUpdate={update}
+                  onScan={() => void openIdentityCamera()} onDeleteDocument={() => void deleteDocument()}
+                  onSelectMeasurement={id => setForm(previous => selectMeasurement(previous, id))} onAddMeasurement={() => setForm(previous => addMeasurement(previous, `measurement-${Date.now()}`))}
+                  onDeleteMeasurement={() => { const index = form.vitalMeasurements.findIndex(record => record.id === form.activeMeasurementId); Alert.alert("측정 삭제", `${index + 1}차 측정값과 측정 시각을 삭제할까요?`, [{ text: "취소", style: "cancel" }, { text: "삭제", style: "destructive", onPress: () => setForm(previous => deleteMeasurement(previous)) }]); }}
+                  onMeasuredChange={(date, time) => setForm(previous => ({ ...previous, measuredDate: date, measuredTime: time, measuredAt: formatTimestamp(date, time) }))}
+                  onVitalChange={(key, value) => setForm(previous => ({ ...previous, [key]: key === "bp" ? formatBloodPressure(previous.bp, value) : key === "bt" ? formatBodyTemperature(previous.bt, value) : value }))}
+                  onHistoryChange={history => setForm(previous => ({ ...previous, history }))}
+                  onDraw={field => { if (mediaBusy) { Alert.alert("녹취 진행 중", "녹취를 중지한 후 손글씨를 열어 주세요."); return; } setDrawingTarget(field); }}
+                  onDeleteDrawing={deleteDrawing} onAppend={attachment => commitPatientUpdate(activePatientId, previous => ({ ...previous, attachments: previous.attachments.some(item => item.id === attachment.id) ? previous.attachments : [...previous.attachments, attachment] }))} onMediaBusyChange={setMediaBusy}
+                  sender={sender}
+                  medicalTerms={medicalTerms}
+                  onRemoveAttachment={async attachment => {
+                    // Persist the shorter list first so a failed write never leaves a record pointing at a deleted file.
+                    await commitPatientUpdate(activePatientId, previous => ({ ...previous, attachments: previous.attachments.filter(item => item.id !== attachment.id) }));
+                    await deleteLocalFile(attachment.uri);
+                  }}
+                />
               ) : activeTab === "settings" ? (
-                <SettingsPage isDark={isDark} onToggleTheme={toggleTheme} />
+                <SettingsPage isDark={isDark} onThemeChange={changeTheme} />
               ) : activeTab === "mci" ? (
                 <FuturePage isDark={isDark} />
               ) : null}
-              <SalsPage isDark={isDark} visible={activeTab === "sals"} />
             </ScrollView>
           </KeyboardAvoidingView>
           <BottomNavigation
             activeTab={activeTab}
             isDark={isDark}
-            onSelect={setActiveTab}
+            onSelect={tab => { if (mediaBusy) { Alert.alert("기록 진행 중", "녹취를 중지하거나 촬영을 마친 후 이동해 주세요."); return; } setActiveTab(tab); }}
           />
           <HandwritingModal
             visible={drawingTarget !== null}
@@ -1042,11 +790,11 @@ export default function App() {
               drawingTarget === "historyDrawing" ? "History" : "Chief Complaint"
             }
             initialUri={drawingTarget ? form[drawingTarget] : null}
-            onClose={() => setDrawingTarget(null)}
-            onSave={(uri) => void saveDrawing(uri)}
+            onClose={() => void closeDrawing()}
+            onSave={saveDrawing}
           />
         </SafeAreaView>
-        <Modal
+        <NoteModal
           visible={cameraVisible}
           animationType="slide"
           statusBarTranslucent
@@ -1059,7 +807,10 @@ export default function App() {
               facing="back"
               autofocus="on"
             />
-            <View style={styles.cameraOverlay}>
+            <View style={styles.cameraOverlay} onLayout={({ nativeEvent: { layout } }) => setCameraLayout({ width: layout.width, height: layout.height })}>
+              <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width={cameraLayout.width} height={cameraLayout.height}>
+                <Path fill="rgba(0,0,0,0.65)" fillRule="evenodd" d={`M0 0H${cameraLayout.width}V${cameraLayout.height}H0Z M${guideFrame.x} ${guideTop + guideFrame.y}h${guideFrame.width}v${guideFrame.height}h-${guideFrame.width}Z`} />
+              </Svg>
               <View style={styles.cameraHeader}>
                 <Pressable
                   disabled={scannerBusy}
@@ -1071,13 +822,13 @@ export default function App() {
                 <Text style={styles.cameraTitle}>신분증 촬영</Text>
                 <View style={styles.cameraHeaderSpace} />
               </View>
-              <View style={styles.guideWrap}>
-                <View style={styles.guide} />
+              <View style={styles.guideWrap} onLayout={({ nativeEvent: { layout } }) => setGuideTop(layout.y)}>
+                <View style={styles.guide} onLayout={({ nativeEvent: { layout } }) => setGuideFrame({ x: layout.x, y: layout.y, width: layout.width, height: layout.height })} />
                 <Text style={styles.guideText}>
                   신분증이 테두리를 가득 채우게 가까이 촬영하세요
                 </Text>
                 <Text style={styles.guideSub}>
-                  가이드 안쪽만 저장·인식되며 편집 화면은 표시하지 않습니다
+                  빛 반사를 피하고 글자가 선명할 때 촬영하세요
                 </Text>
               </View>
               <Pressable
@@ -1089,30 +840,80 @@ export default function App() {
                 ]}
               >
                 <View style={styles.shutterInner}>
-                  {scannerBusy && <ActivityIndicator color="#087F6D" />}
+                  {scannerBusy && <ActivityIndicator color="#C9232D" />}
                 </View>
               </Pressable>
             </View>
           </View>
-        </Modal>
+        </NoteModal>
+        {Platform.OS === "ios" ? (
+          <RecordOptionsPopover
+            visible={optionsVisible}
+            isDark={isDark}
+            anchor={optionsAnchor}
+            affiliation={affiliation}
+            senderRank={sender.rank}
+            senderName={sender.name}
+            useWheelPicker={useWheelPicker}
+            wheelPreferenceReady={wheelPreferenceReady}
+            showReset={activeTab === "memo"}
+            onThemeChange={changeTheme}
+            onWheelChange={value => void changeWheelPreference(value)}
+            medicalTerms={medicalTerms}
+            onMedicalTermsChange={value => void changeMedicalTerms(value)}
+            onAffiliationSaved={setSender}
+            onReset={reset}
+            onClose={() => setOptionsVisible(false)}
+          />
+        ) : <CenteredDialog visible={optionsVisible} isDark={isDark} title="기록 옵션" onClose={() => setOptionsVisible(false)}>
+          {optionsVisible && <RecordAffiliation isDark={isDark} onSaved={setSender} />}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: clinicalTheme(isDark).field, borderRadius: 14, paddingLeft: 16, minHeight: 60 }}>
+            <Text style={{ fontSize: 16, fontFamily: "Pretendard-Medium", color: clinicalTheme(isDark).ink }}>다크 모드</Text>
+            <SquishThemeSwitch checked={isDark} onChange={changeTheme} />
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: clinicalTheme(isDark).field, borderRadius: 14, paddingLeft: 16, minHeight: 60 }}>
+            <View style={{ flex: 1, gap: 4, paddingVertical: 10 }}>
+              <Text style={{ fontSize: 16, fontFamily: "Pretendard-Medium", color: clinicalTheme(isDark).ink }}>휠 피커 사용</Text>
+              <Text style={{ fontSize: 13, color: clinicalTheme(isDark).muted }}>{useWheelPicker ? "사용한다" : "사용하지 않는다 · 숫자 직접 입력"}</Text>
+            </View>
+            <SquishThemeSwitch accessibilityLabel="휠 피커 사용" checked={useWheelPicker} disabled={!wheelPreferenceReady} onChange={value => void changeWheelPreference(value)} />
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: clinicalTheme(isDark).field, borderRadius: 14, paddingLeft: 16, minHeight: 60 }}>
+            <View style={{ flex: 1, gap: 4, paddingVertical: 10 }}>
+              <Text style={{ fontSize: 16, fontFamily: "Pretendard-Medium", color: clinicalTheme(isDark).ink }}>의학용어로 표시</Text>
+              <Text style={{ fontSize: 13, color: clinicalTheme(isDark).muted }}>병력·검토사항을 HTN, DM처럼</Text>
+            </View>
+            <SquishThemeSwitch accessibilityLabel="의학용어로 표시" checked={medicalTerms} onChange={value => void changeMedicalTerms(value)} />
+          </View>
+          {activeTab === "memo" && <Pressable accessibilityRole="button" onPress={() => { setOptionsVisible(false); reset(); }} style={({ pressed }) => ({ minHeight: 48, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.6 : 1 })}>
+            <Text style={{ fontSize: 16, fontFamily: "Pretendard-Medium", color: clinicalTheme(isDark).danger }}>환자 기록 전체 초기화</Text>
+          </Pressable>}
+          <Pressable accessibilityRole="button" onPress={() => setOptionsVisible(false)} style={{ minHeight: 48, alignItems: "center", justifyContent: "center" }}><Text style={{ fontSize: 16, color: clinicalTheme(isDark).muted }}>닫기</Text></Pressable>
+        </CenteredDialog>}
+        <NoteDialogHost isDark={isDark} />
         {showIntro && (
           <Animated.View
-            pointerEvents="none"
             style={[styles.intro, { opacity: introOpacity }]}
           >
-            <Animated.View
-              style={[
-                styles.introImageWrap,
-                { transform: [{ scale: introScale }] },
-              ]}
-            >
-              <Image
-                source={require("./assets/splash-screen.png")}
-                resizeMode="contain"
-                style={styles.introImage}
-              />
-            </Animated.View>
-            <Animated.View style={[styles.introDim, { opacity: introDim }]} />
+            <WebView
+              source={{ uri: SPLASH_URI }}
+              allowingReadAccessToURL={FileSystem.bundleDirectory ?? undefined}
+              style={styles.introWebView}
+              containerStyle={styles.introWebView}
+              originWhitelist={["*"]}
+              javaScriptEnabled
+              domStorageEnabled
+              allowFileAccess
+              allowFileAccessFromFileURLs
+              allowUniversalAccessFromFileURLs
+              scrollEnabled={false}
+              overScrollMode="never"
+              setSupportMultipleWindows={false}
+              onMessage={({ nativeEvent }) => {
+                if (nativeEvent.data === "complete") finishIntro();
+              }}
+              onError={finishIntro}
+            />
           </Animated.View>
         )}
       </View>
@@ -1120,486 +921,12 @@ export default function App() {
   );
 }
 
-type AdvancedProps = {
-  form: FormState;
-  isDark: boolean;
-  update: (key: keyof FormState, value: string) => void;
-  onLayout: (y: number) => void;
-};
-function AdvancedPatient({
-  form,
-  isDark,
-  update,
-  onScan,
-  onDeleteDocument,
-  scannerBusy,
-  onLayout,
-}: AdvancedProps & {
-  onScan: () => void;
-  onDeleteDocument: () => void;
-  scannerBusy: boolean;
-}) {
-  const age = calculateAge(form.birthDate);
-  return (
-    <View
-      style={[styles.card, isDark && darkStyles.card]}
-      onLayout={(event) => onLayout(event.nativeEvent.layout.y)}
-    >
-      <SectionHeading step="1" title="Patient ID" isDark={isDark} />
-      <Text style={[styles.label, isDark && darkStyles.secondaryText]}>
-        이름
-      </Text>
-      <TextInput
-        value={form.name}
-        onChangeText={(value) => update("name", value)}
-        placeholder="환자 이름"
-        placeholderTextColor={isDark ? "#8DA29C" : "#9DA9A6"}
-        style={[styles.singleInput, isDark && darkStyles.input]}
-      />
-      <Text style={[styles.label, isDark && darkStyles.secondaryText]}>
-        생년월일
-      </Text>
-      <View style={styles.birthInputRow}>
-        <TextInput
-          value={displayBirthDate(form.birthDate)}
-          onChangeText={(value) =>
-            update("birthDate", updateBirthDate(form.birthDate, value))
-          }
-          keyboardType="number-pad"
-          maxLength={13}
-          placeholder="YYYY. MM. DD."
-          placeholderTextColor={isDark ? "#8DA29C" : "#9DA9A6"}
-          style={[
-            styles.singleInput,
-            styles.birthInput,
-            isDark && darkStyles.input,
-          ]}
-        />
-        <View style={[styles.ageDisplay, isDark && darkStyles.softButton]}>
-          <Text
-            style={[
-              age === null ? styles.agePlaceholder : styles.ageText,
-              isDark &&
-                (age === null
-                  ? darkStyles.tertiaryText
-                  : darkStyles.accentText),
-            ]}
-          >
-            {age === null ? "만 나이" : `만 ${age}세`}
-          </Text>
-        </View>
-      </View>
-      <Text style={[styles.label, isDark && darkStyles.secondaryText]}>
-        성별
-      </Text>
-      <View style={styles.segmentRow}>
-        {["남성", "여성"].map((item) => (
-          <Pressable
-            key={item}
-            onPress={() => update("gender", form.gender === item ? "" : item)}
-            style={[
-              styles.segmentButton,
-              isDark && darkStyles.input,
-              form.gender === item && styles.selectedButton,
-              isDark && form.gender === item && darkStyles.selectedButton,
-            ]}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                isDark && darkStyles.secondaryText,
-                form.gender === item && styles.selectedText,
-              ]}
-            >
-              {item}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-      <View style={styles.documentRow}>
-        <Pressable
-          disabled={scannerBusy}
-          onPress={onScan}
-          style={[
-            styles.scanButton,
-            styles.scanButtonCompact,
-            isDark && darkStyles.softButton,
-            scannerBusy && styles.disabledButton,
-          ]}
-        >
-          {scannerBusy ? (
-            <ActivityIndicator
-              size="small"
-              color={isDark ? "#67D2BC" : "#087F6D"}
-            />
-          ) : (
-            <Ionicons
-              name="camera"
-              size={20}
-              color={isDark ? "#67D2BC" : "#087F6D"}
-            />
-          )}
-          <View style={styles.modeText}>
-            <Text style={[styles.scanTitle, isDark && darkStyles.primaryText]}>
-              {scannerBusy ? "인식 중" : "신분증 촬영"}
-            </Text>
-            <Text
-              style={[styles.scanCaption, isDark && darkStyles.secondaryText]}
-            >
-              성명·생년월일 인식
-            </Text>
-          </View>
-        </Pressable>
-        {form.idDocument && (
-          <SwipeDocument
-            document={form.idDocument}
-            isDark={isDark}
-            onDelete={onDeleteDocument}
-          />
-        )}
-      </View>
-      {form.idDocument && (
-        <Text style={[styles.swipeHint, isDark && darkStyles.secondaryText]}>
-          촬영 자료를 왼쪽으로 밀어 삭제
-        </Text>
-      )}
-    </View>
-  );
-}
-
-function SwipeDocument({
-  document,
-  isDark,
-  onDelete,
-}: {
-  document: IdDocument;
-  isDark: boolean;
-  onDelete: () => void;
-}) {
-  const [previewVisible, setPreviewVisible] = useState(false);
-  return (
-    <>
-      <SwipeToDelete
-        accessibilityLabel="촬영 자료 삭제"
-        onDelete={onDelete}
-        containerStyle={[styles.documentSwipe, styles.documentEqualWidth]}
-        contentStyle={[
-          styles.documentCard,
-          styles.documentCardEqualWidth,
-          isDark && darkStyles.input,
-        ]}
-      >
-        <Pressable
-          accessibilityLabel="촬영한 신분증 보기"
-          onPress={() => setPreviewVisible(true)}
-          style={styles.documentPreviewButton}
-        >
-          <Ionicons
-            name="image-outline"
-            size={20}
-            color={isDark ? "#FFFFFF" : "#087F6D"}
-          />
-          <Text
-            style={[styles.documentViewText, isDark && darkStyles.primaryText]}
-          >
-            보기
-          </Text>
-        </Pressable>
-      </SwipeToDelete>
-      <Modal
-        visible={previewVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setPreviewVisible(false)}
-      >
-        <Pressable
-          style={styles.previewBackdrop}
-          onPress={() => setPreviewVisible(false)}
-        >
-          <Image
-            source={{ uri: document.uri }}
-            resizeMode="contain"
-            style={styles.previewImage}
-          />
-          <View style={styles.previewClose}>
-            <Ionicons name="close" size={27} color="#FFFFFF" />
-          </View>
-        </Pressable>
-      </Modal>
-    </>
-  );
-}
-
-function SwipeToDelete({
-  children,
-  onDelete,
-  accessibilityLabel,
-  containerStyle,
-  contentStyle,
-}: {
-  children: React.ReactNode;
-  onDelete: () => void;
-  accessibilityLabel: string;
-  containerStyle?: object;
-  contentStyle?: object;
-}) {
-  const revealWidth = 92;
-  const translateX = useRef(new Animated.Value(0)).current;
-  const dragStart = useRef(0);
-  const opened = useRef(false);
-  const deleteOpacity = translateX.interpolate({
-    inputRange: [-revealWidth, -20, 0],
-    outputRange: [1, 0.35, 0],
-    extrapolate: "clamp",
-  });
-  const deleteScale = translateX.interpolate({
-    inputRange: [-revealWidth, -35, 0],
-    outputRange: [1, 0.78, 0.65],
-    extrapolate: "clamp",
-  });
-  const snap = (toValue: number) => {
-    opened.current = toValue < 0;
-    Animated.spring(translateX, {
-      toValue,
-      velocity: 0.35,
-      tension: 115,
-      friction: 16,
-      useNativeDriver: true,
-    }).start();
-  };
-  const confirmDelete = () => {
-    Alert.alert(
-      "삭제하시겠습니까?",
-      "삭제한 자료는 복구할 수 없습니다.",
-      [
-        {
-          text: "취소",
-          style: "cancel",
-          onPress: () => snap(0),
-        },
-        {
-          text: "삭제",
-          style: "destructive",
-          onPress: () => {
-            Animated.timing(translateX, {
-              toValue: -420,
-              duration: 220,
-              easing: Easing.out(Easing.cubic),
-              useNativeDriver: true,
-            }).start(({ finished }) => finished && onDelete());
-          },
-        },
-      ],
-      { cancelable: false },
-    );
-  };
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) =>
-        Math.abs(gesture.dx) > 5 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
-      onPanResponderGrant: () => {
-        translateX.stopAnimation((value) => {
-          dragStart.current = value;
-        });
-      },
-      onPanResponderMove: (_, gesture) => {
-        const next = dragStart.current + gesture.dx;
-        translateX.setValue(Math.max(-revealWidth, Math.min(0, next)));
-      },
-      onPanResponderRelease: (_, gesture) => {
-        const finalPosition = dragStart.current + gesture.dx;
-        if (gesture.dx < -145 && !opened.current) {
-          snap(-revealWidth);
-          setTimeout(confirmDelete, 180);
-          return;
-        }
-        snap(finalPosition < -42 || gesture.vx < -0.55 ? -revealWidth : 0);
-      },
-      onPanResponderTerminate: () => snap(opened.current ? -revealWidth : 0),
-    }),
-  ).current;
-  return (
-    <View style={[styles.swipeContainer, containerStyle]}>
-      <Pressable
-        accessibilityLabel={accessibilityLabel}
-        onPress={confirmDelete}
-        style={styles.swipeDeleteAction}
-      >
-        <Animated.View
-          style={{
-            opacity: deleteOpacity,
-            transform: [{ scale: deleteScale }],
-          }}
-        >
-          <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
-          <Text style={styles.swipeDeleteText}>삭제</Text>
-        </Animated.View>
-      </Pressable>
-      <Animated.View
-        {...panResponder.panHandlers}
-        style={[
-          styles.swipeContent,
-          contentStyle,
-          { transform: [{ translateX }] },
-        ]}
-      >
-        {children}
-      </Animated.View>
-    </View>
-  );
-}
-function HistoryOptionPicker({
-  history,
-  isDark,
-  toggle,
-}: {
-  history: string[];
-  isDark: boolean;
-  toggle: (item: string) => void;
-}) {
-  const [cerebrovascularOpen, setCerebrovascularOpen] = useState(() =>
-    CEREBROVASCULAR_OPTIONS.some((item) => history.includes(item)),
-  );
-  const [cardiovascularOpen, setCardiovascularOpen] = useState(() =>
-    CARDIOVASCULAR_OPTIONS.some((item) => history.includes(item)),
-  );
-  const [respiratoryOpen, setRespiratoryOpen] = useState(() =>
-    HISTORY_RESPIRATORY_OPTIONS.some((item) => history.includes(item)),
-  );
-  const renalSelected = history.includes("신부전");
-
-  const closeGroup = (
-    options: string[],
-    close: React.Dispatch<React.SetStateAction<boolean>>,
-  ) => {
-    options.forEach((item) => {
-      if (history.includes(item)) toggle(item);
-    });
-    close(false);
-  };
-
-  const historyChip = (
-    item: string,
-    options?: {
-      label?: string;
-      selected?: boolean;
-      expanded?: boolean;
-      secondary?: boolean;
-      onPress?: () => void;
-    },
-  ) => {
-    const selected = options?.selected ?? history.includes(item);
-    return (
-      <Pressable
-        key={item}
-        accessibilityRole="button"
-        accessibilityState={{ selected, expanded: options?.expanded }}
-        onPress={options?.onPress ?? (() => toggle(item))}
-        style={[
-          styles.chip,
-          styles.historyChip,
-          isDark && darkStyles.input,
-          options?.secondary && styles.historyChildChip,
-          isDark && options?.secondary && darkStyles.historyChildChip,
-          options?.expanded && styles.historyParentExpanded,
-          isDark && options?.expanded && darkStyles.historyParentExpanded,
-          selected && styles.selectedButton,
-          isDark && selected && darkStyles.selectedButton,
-        ]}
-      >
-        <Text
-          style={[
-            styles.chipText,
-            styles.historyChipText,
-            isDark && darkStyles.secondaryText,
-            options?.secondary && styles.historyChildChipText,
-            isDark && options?.secondary && darkStyles.historyChildChipText,
-            options?.expanded && styles.historyParentExpandedText,
-            isDark && options?.expanded && darkStyles.historyParentExpandedText,
-            selected && styles.selectedText,
-          ]}
-        >
-          {options?.label ?? item}
-        </Text>
-      </Pressable>
-    );
-  };
-
-  return (
-    <View style={styles.historyOptions}>
-      <View style={styles.historyChipGrid}>
-        {HISTORY_PRIMARY_OPTIONS.map((item) => historyChip(item))}
-        {historyChip("뇌혈관", {
-          expanded: cerebrovascularOpen,
-          onPress: () =>
-            cerebrovascularOpen
-              ? closeGroup(CEREBROVASCULAR_OPTIONS, setCerebrovascularOpen)
-              : setCerebrovascularOpen(true),
-        })}
-        {cerebrovascularOpen &&
-          CEREBROVASCULAR_OPTIONS.map((item) =>
-            historyChip(item, { secondary: true }),
-          )}
-        {historyChip("심혈관", {
-          expanded: cardiovascularOpen,
-          onPress: () =>
-            cardiovascularOpen
-              ? closeGroup(CARDIOVASCULAR_OPTIONS, setCardiovascularOpen)
-              : setCardiovascularOpen(true),
-        })}
-        {cardiovascularOpen &&
-          CARDIOVASCULAR_OPTIONS.map((item) =>
-            historyChip(item, { secondary: true }),
-          )}
-        {historyChip("호흡기", {
-          expanded: respiratoryOpen,
-          onPress: () =>
-            respiratoryOpen
-              ? closeGroup(HISTORY_RESPIRATORY_OPTIONS, setRespiratoryOpen)
-              : setRespiratoryOpen(true),
-        })}
-        {respiratoryOpen &&
-          HISTORY_RESPIRATORY_OPTIONS.map((item) =>
-            historyChip(item, { secondary: true }),
-          )}
-        {historyChip("신부전", {
-          selected: renalSelected,
-          onPress: () => {
-            if (renalSelected) {
-              DIALYSIS_OPTIONS.forEach((item) => {
-                if (history.includes(item)) toggle(item);
-              });
-            }
-            toggle("신부전");
-          },
-        })}
-        {renalSelected &&
-          DIALYSIS_OPTIONS.map((item) =>
-            historyChip(item, {
-              label: item.replace("투석 ", ""),
-              secondary: true,
-              onPress: () => {
-                DIALYSIS_OPTIONS.forEach((option) => {
-                  if (option !== item && history.includes(option))
-                    toggle(option);
-                });
-                toggle(item);
-              },
-            }),
-          )}
-        {HISTORY_LAST_OPTIONS.map((item) => historyChip(item))}
-      </View>
-    </View>
-  );
-}
-
 function SettingsPage({
   isDark,
-  onToggleTheme,
+  onThemeChange,
 }: {
   isDark: boolean;
-  onToggleTheme: () => void;
+  onThemeChange: (dark: boolean) => void;
 }) {
   return (
     <View style={[styles.card, isDark && darkStyles.card]}>
@@ -1607,7 +934,7 @@ function SettingsPage({
         <Ionicons
           name="settings-outline"
           size={22}
-          color={isDark ? "#67D2BC" : "#087F6D"}
+          color={isDark ? "#FF6972" : "#C9232D"}
         />
         <Text style={[styles.settingsTitle, isDark && darkStyles.primaryText]}>
           설정
@@ -1616,26 +943,19 @@ function SettingsPage({
       <Text style={[styles.settingsLabel, isDark && darkStyles.secondaryText]}>
         화면
       </Text>
-      <Pressable
-        onPress={onToggleTheme}
-        style={[styles.modeOption, isDark && darkStyles.input]}
-      >
+      <View style={[styles.modeOption, { backgroundColor: clinicalTheme(isDark).field }]}>
         <View style={styles.modeText}>
           <Text style={[styles.modeTitle, isDark && darkStyles.primaryText]}>
-            {isDark ? "다크 모드" : "라이트 모드"}
+            다크 모드
           </Text>
           <Text
             style={[styles.modeCaption, isDark && darkStyles.secondaryText]}
           >
-            눌러서 화면 모드를 전환합니다
+            {isDark ? "켜짐" : "꺼짐"}
           </Text>
         </View>
-        <Ionicons
-          name={isDark ? "moon" : "sunny"}
-          size={21}
-          color={isDark ? "#67D2BC" : "#087F6D"}
-        />
-      </Pressable>
+        <SquishThemeSwitch checked={isDark} onChange={onThemeChange} />
+      </View>
     </View>
   );
 }
@@ -1643,7 +963,7 @@ function FuturePage({ isDark }: { isDark: boolean }) {
   return (
     <View style={[styles.card, styles.futureCard, isDark && darkStyles.card]}>
       <View style={styles.futureIcon}>
-        <Ionicons name="people-outline" size={32} color="#087F6D" />
+        <Ionicons name="people-outline" size={32} color="#C9232D" />
       </View>
       <Text style={[styles.futureTitle, isDark && darkStyles.primaryText]}>
         다수사상자
@@ -1660,363 +980,44 @@ function FuturePage({ isDark }: { isDark: boolean }) {
   );
 }
 function BottomNavigation({
-  activeTab,
-  isDark,
-  onSelect,
+  activeTab, isDark, onSelect,
 }: {
-  activeTab: "memo" | "sals" | "mci" | "settings";
+  activeTab: "memo" | "mci" | "settings";
   isDark: boolean;
-  onSelect: (tab: "memo" | "sals" | "mci" | "settings") => void;
+  onSelect: (tab: "memo" | "mci" | "settings") => void;
 }) {
-  const items = [
-    {
-      key: "memo" as const,
-      label: "메모",
-      icon: "document-text-outline" as const,
-    },
-    { key: "sals" as const, label: "SALS", icon: "timer-outline" as const },
-    {
-      key: "mci" as const,
-      label: "다수사상자",
-      icon: "people-outline" as const,
-    },
-    {
-      key: "settings" as const,
-      label: "설정",
-      icon: "settings-outline" as const,
-    },
+  const tabs = [
+    { key: "memo" as const, label: "메모", icon: "document-text-outline" as const, selectedIcon: "document-text" as const },
+    { key: "mci" as const, label: "다수사상자", icon: "people-outline" as const, selectedIcon: "people" as const },
+    { key: "settings" as const, label: "설정", icon: "settings-outline" as const, selectedIcon: "settings" as const },
   ];
-  return (
-    <View style={[styles.bottomNav, isDark && darkStyles.bottomNav]}>
-      {items.map((item) => {
-        const selected = activeTab === item.key;
-        return (
-          <Pressable
-            key={item.key}
-            onPress={() => onSelect(item.key)}
-            style={styles.bottomNavItem}
-          >
-            <Ionicons
-              name={item.icon}
-              size={21}
-              color={
-                selected
-                  ? isDark
-                    ? "#67D2BC"
-                    : "#087F6D"
-                  : isDark
-                    ? "#8DA29C"
-                    : "#8A9995"
-              }
-            />
-            <Text
-              style={[
-                styles.bottomNavText,
-                isDark && darkStyles.secondaryText,
-                selected && styles.bottomNavTextActive,
-                isDark && selected && darkStyles.bottomNavTextActive,
-              ]}
-            >
-              {item.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-function SectionHeading({
-  step,
-  title,
-  isDark,
-}: {
-  step: string;
-  title: string;
-  isDark: boolean;
-}) {
-  return (
-    <View style={styles.sectionHeading}>
-      <View style={styles.step}>
-        <Text style={styles.stepText}>{step}</Text>
+  if (Platform.OS === "ios") {
+    // iOS 26: a capsule tab bar floating above the content, which scrolls underneath it.
+    const t = clinicalTheme(isDark);
+    return <View pointerEvents="box-none" style={styles.floatingNavLayer}>
+      <View accessibilityRole="tablist" style={[styles.floatingNav, { backgroundColor: isDark ? "rgba(44,45,50,0.96)" : "rgba(250,249,247,0.97)", borderColor: t.border }]}>
+        {tabs.map((tab) => {
+          const selected = tab.key === activeTab;
+          const color = selected ? t.accent : t.ink;
+          return <Pressable key={tab.key} accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={tab.label} onPress={() => onSelect(tab.key)} style={[styles.floatingNavItem, selected && { backgroundColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.06)" }]}>
+            <Ionicons name={selected ? tab.selectedIcon : tab.icon} size={22} color={color} />
+            <Text style={[styles.floatingNavText, { color }]}>{tab.label}</Text>
+          </Pressable>;
+        })}
       </View>
-      <Text style={[styles.sectionTitle, isDark && darkStyles.primaryText]}>
-        {title}
-      </Text>
-    </View>
-  );
+    </View>;
+  }
+  return <View style={[styles.bottomNav, isDark && darkStyles.bottomNav]}>
+    {tabs.map((tab) => {
+      const selected = tab.key === activeTab;
+      const color = selected ? clinicalTheme(isDark).accent : clinicalTheme(isDark).muted;
+      return <Pressable key={tab.key} accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={tab.label} onPress={() => onSelect(tab.key)} style={styles.bottomNavItem}>
+        <Ionicons name={selected ? tab.selectedIcon : tab.icon} size={23} color={color} />
+        <Text style={[styles.bottomNavText, { color }]}>{tab.label}</Text>
+      </Pressable>;
+    })}
+  </View>;
 }
-function MemoCard({
-  step,
-  title,
-  value,
-  onsetDate,
-  onsetTime,
-  quickOptions,
-  historyOptions = false,
-  selectedOptions,
-  drawingUri,
-  placeholder,
-  isDark,
-  tall = false,
-  onDraw,
-  onChangeOnsetDate,
-  onChangeOnsetTime,
-  onToggleOption,
-  onDeleteDrawing,
-  onChange,
-  onFocus,
-  onLayout,
-}: {
-  step: string;
-  title: string;
-  value: string;
-  onsetDate?: string;
-  onsetTime?: string;
-  quickOptions?: string[];
-  historyOptions?: boolean;
-  selectedOptions?: string[];
-  drawingUri: string | null;
-  placeholder: string;
-  isDark: boolean;
-  tall?: boolean;
-  onDraw: () => void;
-  onChangeOnsetDate?: (value: string) => void;
-  onChangeOnsetTime?: (value: string) => void;
-  onToggleOption?: (item: string) => void;
-  onDeleteDrawing: () => void;
-  onChange: (value: string) => void;
-  onFocus: () => void;
-  onLayout: (y: number) => void;
-}) {
-  const [previewVisible, setPreviewVisible] = useState(false);
-  const [drawingAspectRatio, setDrawingAspectRatio] = useState(1.4);
-  const [onsetNow, setOnsetNow] = useState(() => new Date());
-  const onsetWeekday = onsetDate ? onsetWeekdayText(onsetDate) : null;
-  useEffect(() => {
-    if (onsetTime === undefined) return;
-    const timer = setInterval(() => setOnsetNow(new Date()), 30000);
-    return () => clearInterval(timer);
-  }, [onsetTime]);
-  useEffect(() => {
-    if (!drawingUri) return;
-    Image.getSize(
-      drawingUri,
-      (width, height) => {
-        if (width > 0 && height > 0) setDrawingAspectRatio(width / height);
-      },
-      () => setDrawingAspectRatio(1.4),
-    );
-  }, [drawingUri]);
-  return (
-    <View
-      style={[styles.card, isDark && darkStyles.card]}
-      onLayout={(event) => onLayout(event.nativeEvent.layout.y)}
-    >
-      <View style={styles.memoHeading}>
-        <SectionHeading step={step} title={title} isDark={isDark} />
-        <Pressable
-          accessibilityLabel={`${title} 손글씨 메모`}
-          onPress={onDraw}
-          style={[styles.drawButton, isDark && darkStyles.drawButton]}
-        >
-          <Ionicons
-            name="pencil"
-            size={15}
-            color={isDark ? "#67D2BC" : "#087F6D"}
-          />
-          <Text
-            style={[styles.drawButtonText, isDark && darkStyles.drawButtonText]}
-          >
-            {drawingUri ? "수정" : "손글씨"}
-          </Text>
-        </Pressable>
-      </View>
-      {onsetTime !== undefined &&
-        onsetDate !== undefined &&
-        onChangeOnsetDate &&
-        onChangeOnsetTime && (
-          <View style={styles.onsetSection}>
-            <Text style={[styles.label, isDark && darkStyles.secondaryText]}>
-              Onset
-            </Text>
-            <View style={styles.onsetRow}>
-              <View style={[styles.onsetDateBox, isDark && darkStyles.input]}>
-                <TextInput
-                  value={displayOnsetDate(onsetDate)}
-                  onChangeText={(value) =>
-                    onChangeOnsetDate(updateBirthDate(onsetDate, value))
-                  }
-                  keyboardType="number-pad"
-                  maxLength={13}
-                  placeholder="YYYY. MM. DD."
-                  placeholderTextColor={isDark ? "#8DA29C" : "#9DA9A6"}
-                  style={[
-                    styles.onsetDateField,
-                    !onsetWeekday && styles.onsetDateFieldEmpty,
-                    isDark && darkStyles.primaryText,
-                  ]}
-                />
-                {onsetWeekday && (
-                  <Text
-                    style={[
-                      styles.onsetWeekdayInline,
-                      isDark && darkStyles.primaryText,
-                    ]}
-                  >
-                    ({onsetWeekday.slice(0, 1)})
-                  </Text>
-                )}
-              </View>
-              <TextInput
-                value={displayOnsetTime(onsetTime)}
-                onChangeText={onChangeOnsetTime}
-                keyboardType="number-pad"
-                maxLength={5}
-                placeholder="HH:MM"
-                placeholderTextColor={isDark ? "#8DA29C" : "#9DA9A6"}
-                style={[styles.onsetInput, isDark && darkStyles.input]}
-              />
-              <Pressable
-                onPress={() => {
-                  const now = new Date();
-                  onChangeOnsetDate(
-                    `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`,
-                  );
-                  onChangeOnsetTime(
-                    `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`,
-                  );
-                  setOnsetNow(now);
-                }}
-                style={styles.onsetNowButton}
-              >
-                <Text style={styles.nowText}>현재</Text>
-              </Pressable>
-            </View>
-            {onsetElapsedText(onsetDate, onsetTime, onsetNow) && (
-              <View
-                style={[
-                  styles.onsetElapsedBadge,
-                  isDark && darkStyles.onsetElapsedBadge,
-                ]}
-              >
-                <Ionicons
-                  name="time-outline"
-                  size={14}
-                  color={isDark ? "#67D2BC" : "#087F6D"}
-                />
-                <Text
-                  style={[styles.onsetElapsed, isDark && darkStyles.accentText]}
-                >
-                  {onsetElapsedText(onsetDate, onsetTime, onsetNow)}
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-      {quickOptions && selectedOptions && onToggleOption && (
-        <View style={styles.memoQuickOptions}>
-          {quickOptions.map((item) => {
-            const selected = selectedOptions.includes(item);
-            return (
-              <Pressable
-                key={item}
-                onPress={() => onToggleOption(item)}
-                style={[
-                  styles.chip,
-                  isDark && darkStyles.input,
-                  selected && styles.selectedButton,
-                  isDark && selected && darkStyles.selectedButton,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    isDark && darkStyles.secondaryText,
-                    selected && styles.selectedText,
-                  ]}
-                >
-                  {item}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      )}
-      {historyOptions && selectedOptions && onToggleOption && (
-        <HistoryOptionPicker
-          history={selectedOptions}
-          isDark={isDark}
-          toggle={onToggleOption}
-        />
-      )}
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        onFocus={onFocus}
-        placeholder={placeholder}
-        placeholderTextColor={isDark ? "#8DA29C" : "#9DA9A6"}
-        multiline
-        textAlignVertical="top"
-        style={[
-          styles.memoInput,
-          tall && styles.memoInputTall,
-          isDark && darkStyles.input,
-        ]}
-      />
-      {drawingUri && (
-        <SwipeToDelete
-          accessibilityLabel="필기 메모 삭제"
-          onDelete={onDeleteDrawing}
-          containerStyle={[
-            styles.drawingAttachment,
-            { aspectRatio: drawingAspectRatio },
-          ]}
-          contentStyle={[
-            styles.drawingAttachmentContent,
-            isDark && darkStyles.input,
-          ]}
-        >
-          <Pressable
-            onPress={() => setPreviewVisible(true)}
-            style={styles.drawingPreview}
-          >
-            <Image
-              source={{ uri: drawingUri }}
-              resizeMode="contain"
-              style={styles.drawingThumbnail}
-            />
-            <View style={styles.drawingLabel}>
-              <Ionicons name="expand-outline" size={16} color="#FFFFFF" />
-              <Text style={styles.drawingLabelText}>보기</Text>
-            </View>
-          </Pressable>
-        </SwipeToDelete>
-      )}
-      <Modal
-        visible={previewVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setPreviewVisible(false)}
-      >
-        <Pressable
-          style={styles.previewBackdrop}
-          onPress={() => setPreviewVisible(false)}
-        >
-          <Image
-            source={{ uri: drawingUri ?? undefined }}
-            resizeMode="contain"
-            style={styles.previewImage}
-          />
-          <View style={styles.previewClose}>
-            <Ionicons name="close" size={27} color="#FFFFFF" />
-          </View>
-        </Pressable>
-      </Modal>
-    </View>
-  );
-}
-
 function HandwritingModal({
   visible,
   isDark,
@@ -2030,8 +1031,9 @@ function HandwritingModal({
   title: string;
   initialUri: string | null;
   onClose: () => void;
-  onSave: (uri: string) => void;
+  onSave: (uri: string) => Promise<void>;
 }) {
+  const Alert = { alert: useNoteAlert() };
   const [paths, setPaths] = useState<
     { d: string; color: string; width: number }[]
   >([]);
@@ -2045,14 +1047,19 @@ function HandwritingModal({
     visible: false,
   });
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const captureUri = useRef<string | null>(null);
+  const [saveFailed, setSaveFailed] = useState(false);
   const canvasRef = useRef<View>(null);
   const inkColorRef = useRef(isDark ? "#FFFFFF" : "#132622");
-  const canvasColorRef = useRef(isDark ? "#101916" : "#FFFFFF");
+  const canvasColorRef = useRef(clinicalTheme(isDark).surface);
   inkColorRef.current = isDark ? "#FFFFFF" : "#132622";
-  canvasColorRef.current = isDark ? "#101916" : "#FFFFFF";
+  canvasColorRef.current = clinicalTheme(isDark).surface;
   const activePath = useRef(-1);
   useEffect(() => {
     if (visible) {
+      captureUri.current = null;
+      setSaveFailed(false);
       setPaths([]);
       setEraserEnabled(false);
       eraserEnabledRef.current = false;
@@ -2114,27 +1121,33 @@ function HandwritingModal({
     }),
   ).current;
   const save = async () => {
-    if ((paths.length === 0 && !initialUri) || !canvasRef.current) return;
+    if (savingRef.current || (paths.length === 0 && !initialUri) || !canvasRef.current) return;
+    savingRef.current = true;
     try {
       setSaving(true);
-      const uri = await captureRef(canvasRef, {
+      const uri = captureUri.current ?? await captureRef(canvasRef, {
         format: "png",
         quality: 1,
         result: "tmpfile",
       });
-      onSave(uri);
+      captureUri.current = uri;
+      await onSave(uri);
+      captureUri.current = null;
+      setSaveFailed(false);
     } catch {
-      Alert.alert("저장 오류", "필기 메모를 저장하지 못했습니다.");
+      setSaveFailed(true);
+      Alert.alert("저장 오류", "필기는 유지됩니다. 저장 공간을 확인한 뒤 저장 재시도를 눌러 주세요.");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
   return (
-    <Modal
+    <NoteModal
       visible={visible}
       animationType="slide"
       statusBarTranslucent
-      onRequestClose={onClose}
+      onRequestClose={() => { if (!savingRef.current) onClose(); }}
     >
       <SafeAreaView
         style={[styles.handwritingPage, isDark && darkStyles.handwritingPage]}
@@ -2142,7 +1155,8 @@ function HandwritingModal({
       >
         <View style={styles.handwritingHeader}>
           <Pressable
-            onPress={onClose}
+            disabled={saving}
+            onPress={() => { if (!savingRef.current) onClose(); }}
             style={[
               styles.handwritingHeaderButton,
               isDark && darkStyles.handwritingHeaderButton,
@@ -2151,7 +1165,7 @@ function HandwritingModal({
             <Ionicons
               name="close"
               size={25}
-              color={isDark ? "#FFFFFF" : "#17322C"}
+              color={isDark ? "#FFFFFF" : "#1C1C1E"}
             />
           </Pressable>
           <Text
@@ -2175,12 +1189,13 @@ function HandwritingModal({
             {saving ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text style={styles.handwritingSaveText}>저장</Text>
+              <Text style={styles.handwritingSaveText}>{saveFailed ? "저장 재시도" : "저장"}</Text>
             )}
           </Pressable>
         </View>
         <View
           ref={canvasRef}
+          pointerEvents={saving || saveFailed ? "none" : "auto"}
           collapsable={false}
           style={[
             styles.handwritingCanvas,
@@ -2215,7 +1230,7 @@ function HandwritingModal({
                 fill={
                   isDark ? "rgba(103,210,188,0.12)" : "rgba(8,127,109,0.08)"
                 }
-                stroke={isDark ? "#67D2BC" : "#087F6D"}
+                stroke={isDark ? "#FF6972" : "#C9232D"}
                 strokeWidth={1.5}
                 strokeDasharray="4 3"
               />
@@ -2235,6 +1250,7 @@ function HandwritingModal({
         )}
         <View style={styles.handwritingTools}>
           <Pressable
+            disabled={saving || saveFailed}
             onPress={() =>
               setEraserEnabled((previous) => {
                 eraserEnabledRef.current = !previous;
@@ -2253,7 +1269,7 @@ function HandwritingModal({
               <MaterialCommunityIcons
                 name="eraser"
                 size={20}
-                color={isDark ? "#F0F6F4" : "#315C54"}
+                color={isDark ? "#F2F2F7" : "#48484A"}
               />
             )}
             <Text
@@ -2268,6 +1284,7 @@ function HandwritingModal({
           </Pressable>
           {paths.length > 0 && (
             <Pressable
+              disabled={saving || saveFailed}
               onPress={() => setPaths((previous) => previous.slice(0, -1))}
               style={[
                 styles.handwritingTool,
@@ -2277,7 +1294,7 @@ function HandwritingModal({
               <Ionicons
                 name="arrow-undo"
                 size={20}
-                color={isDark ? "#F0F6F4" : "#315C54"}
+                color={isDark ? "#F2F2F7" : "#48484A"}
               />
               <Text
                 style={[
@@ -2304,7 +1321,7 @@ function HandwritingModal({
           </Pressable>
         </View>
       </SafeAreaView>
-    </Modal>
+    </NoteModal>
   );
 }
 
@@ -2362,7 +1379,7 @@ function EraserSizeSlider({
         <MaterialCommunityIcons
           name="eraser"
           size={25}
-          color={isDark ? "#67D2BC" : "#087F6D"}
+          color={isDark ? "#FF6972" : "#C9232D"}
         />
       </View>
       <View style={styles.eraserSliderBody}>
@@ -2437,11 +1454,11 @@ const styles = StyleSheet.create(
       width: 82,
       height: 46,
       borderRadius: 11,
-      backgroundColor: "#E3F4F0",
+      backgroundColor: "#F2F2F7",
       alignItems: "center",
       justifyContent: "center",
     },
-    agePlaceholder: { color: "#8A9995", fontSize: 12, fontWeight: "600" },
+    agePlaceholder: { color: "#8E8E93", fontSize: 12, fontWeight: "600" },
     documentEqualWidth: { flex: 1, width: "auto" },
     documentCardEqualWidth: { width: "100%" },
     memoHeading: {
@@ -2450,15 +1467,15 @@ const styles = StyleSheet.create(
       justifyContent: "space-between",
     },
     drawButton: {
-      minHeight: 32,
+      minHeight: 44,
       borderRadius: 9,
-      backgroundColor: "#E8F3F0",
+      backgroundColor: "transparent",
       paddingHorizontal: 9,
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
     },
-    drawButtonText: { color: "#087F6D", fontSize: 11, fontWeight: "700" },
+    drawButtonText: { color: clinicalTheme(false).accent, fontSize: 13, fontWeight: "500" },
     drawingAttachment: {
       width: "100%",
       marginTop: 9,
@@ -2468,7 +1485,7 @@ const styles = StyleSheet.create(
       flex: 1,
       width: "100%",
       borderRadius: 12,
-      backgroundColor: "#FAFCFB",
+      backgroundColor: "#F9F9FB",
       overflow: "hidden",
     },
     drawingPreview: { flex: 1 },
@@ -2497,7 +1514,7 @@ const styles = StyleSheet.create(
       alignItems: "center",
       justifyContent: "center",
       borderLeftWidth: 1,
-      borderLeftColor: "#DDE5E3",
+      borderLeftColor: "#D1D1D6",
       backgroundColor: "#FFFFFF",
     },
     handwritingPage: {
@@ -2519,14 +1536,14 @@ const styles = StyleSheet.create(
       alignItems: "center",
       justifyContent: "center",
     },
-    handwritingTitle: { color: "#17322C", fontSize: 17, fontWeight: "900" },
+    handwritingTitle: { color: "#1C1C1E", fontSize: 17, fontWeight: "900" },
     handwritingSave: {
       minWidth: 74,
       height: 42,
       borderRadius: 11,
       borderWidth: 1,
-      borderColor: "#087F6D",
-      backgroundColor: "#087F6D",
+      borderColor: "#C9232D",
+      backgroundColor: "#C9232D",
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
@@ -2561,10 +1578,10 @@ const styles = StyleSheet.create(
       justifyContent: "center",
       gap: 7,
     },
-    handwritingToolText: { color: "#315C54", fontSize: 13, fontWeight: "800" },
+    handwritingToolText: { color: "#48484A", fontSize: 13, fontWeight: "800" },
     handwritingToolSelected: {
-      backgroundColor: "#087F6D",
-      borderColor: "#087F6D",
+      backgroundColor: "#C9232D",
+      borderColor: "#C9232D",
     },
     handwritingToolSelectedText: { color: "#FFFFFF" },
     eraserSizeBar: {
@@ -2590,11 +1607,11 @@ const styles = StyleSheet.create(
       justifyContent: "space-between",
     },
     eraserSizeLabel: {
-      color: "#586A66",
+      color: "#636366",
       fontSize: 11,
       fontWeight: "800",
     },
-    eraserSizeValue: { color: "#087F6D", fontSize: 11, fontWeight: "900" },
+    eraserSizeValue: { color: clinicalTheme(false).accent, fontSize: 11, fontWeight: "900" },
     eraserSliderTouch: { height: 30, justifyContent: "center" },
     eraserSliderTrack: {
       height: 5,
@@ -2604,7 +1621,7 @@ const styles = StyleSheet.create(
     eraserSliderFill: {
       height: 5,
       borderRadius: 3,
-      backgroundColor: "#087F6D",
+      backgroundColor: "#C9232D",
     },
     eraserSliderThumb: {
       position: "absolute",
@@ -2615,8 +1632,8 @@ const styles = StyleSheet.create(
       borderRadius: 9,
       borderWidth: 3,
       borderColor: "#FFFFFF",
-      backgroundColor: "#087F6D",
-      shadowColor: "#173F37",
+      backgroundColor: "#C9232D",
+      shadowColor: "#000000",
       shadowOpacity: 0.22,
       shadowRadius: 3,
       elevation: 2,
@@ -2643,17 +1660,63 @@ const styles = StyleSheet.create(
       textAlign: "center",
     },
     flex: { flex: 1 },
-    safe: { flex: 1, backgroundColor: "#F3F6F5" },
+    noteAppHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 6, paddingTop: 8, paddingBottom: 10 },
+    noteBrand: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 9 },
+    noteBrandNumber: { fontSize: 13, fontWeight: "700", letterSpacing: -.4 },
+    noteBrandText: { fontSize: 11, fontWeight: "500", letterSpacing: 1.6 },
+    noteTitle: { fontSize: 30, fontWeight: "600", letterSpacing: -1.2 },
+    noteHeaderMenu: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+    memoPageHeading: { flexDirection: "row", alignItems: "baseline", gap: 10, marginTop: 12, marginBottom: 2, paddingHorizontal: 4 },
+    memoPageTitle: { fontSize: 30, fontWeight: "700", color: "#1C1C1E", letterSpacing: -1 },
+    memoPageCount: { fontSize: 14, color: "#8E8E93" },
+    patientSheet: { borderRadius: 18, borderWidth: 1, overflow: "hidden" },
+    patientContent: { padding: 10, gap: 12 },
+    patientTabHeader: { padding: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+    patientTabCaption: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8, paddingHorizontal: 2 },
+    patientCaptionText: { fontSize: 12, color: "#636366" },
+    patientNavigation: { flexDirection: "row", alignItems: "center", gap: 8 },
+    patientUtilities: { flexDirection: "row", borderLeftWidth: StyleSheet.hairlineWidth, paddingLeft: 4 },
+    measurementActions: { flexDirection: "row", alignItems: "center" },
+    measurementAction: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 3 },
+    measurementActionText: { fontSize: 12, fontWeight: "500" },
+    measurementSheet: { overflow: "hidden" },
+    measurementTabHeader: { marginBottom: 14 },
+    measurementContent: { padding: 0 },
+    vitalRow: { width: "48.6%", flexDirection: "row", alignItems: "center", minHeight: 76, paddingLeft: 10 },
+    vitalCaption: { width: 38, gap: 3 },
+    vitalRowInput: { flex: 1, paddingHorizontal: 6, textAlign: "right" },
+    mapSummary: { marginTop: 10, fontSize: 13 },
+    identityRow: { flexDirection: "row", gap: 10, marginBottom: 12 },
+    identityName: { flex: 1, minWidth: 0 },
+    identityGender: { width: 116 },
+    genderControl: { flexDirection: "row", padding: 3 },
+    genderOption: { flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 7 },
+    genderText: { fontSize: 16 },
+    birthEntry: { flexDirection: "row", alignItems: "center" },
+    birthEntryInput: { flex: 1, minWidth: 0, minHeight: 52, paddingHorizontal: 10, paddingVertical: 10, fontSize: 16, color: "#1C1C1E", fontVariant: ["tabular-nums"] },
+    birthEntryAge: { borderLeftWidth: 1, paddingHorizontal: 10, fontSize: 16 },
+    historySummary: { paddingVertical: 12, marginBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+    historySummaryText: { fontSize: 14, lineHeight: 21 },
+    patientAddButton: { width: 44, height: 44, justifyContent: "center", alignItems: "center", borderRadius: 22 },
+    patientDeleteButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22 },
+    patientDeleteText: { color: "#FF453A", fontSize: 14, fontWeight: "500" },
+    safe: { flex: 1, backgroundColor: clinicalTheme(false).page },
     loading: { flex: 1, alignItems: "center", justifyContent: "center" },
     intro: {
       ...StyleSheet.absoluteFillObject,
       zIndex: 100,
-      backgroundColor: "#F7FCFA",
+      backgroundColor: "#0A0A0A",
     },
-    introImageWrap: { flex: 1, backgroundColor: "#F7FCFA" },
-    introImage: { width: "100%", height: "100%" },
-    introDim: { ...StyleSheet.absoluteFillObject, backgroundColor: "#001C1E" },
-    page: { paddingHorizontal: 15, paddingTop: 17, paddingBottom: 38, gap: 12 },
+    introWebView: {
+      flex: 1,
+      backgroundColor: "#0A0A0A",
+    },
+    page: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 38, gap: 16 },
+    pageUnderFloatingNav: { paddingBottom: 110 },
+    floatingNavLayer: { position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center", paddingBottom: 6 },
+    floatingNav: { flexDirection: "row", width: "86%", maxWidth: 380, height: 64, borderRadius: 32, padding: 4, borderWidth: StyleSheet.hairlineWidth, shadowColor: "#000000", shadowOpacity: 0.25, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
+    floatingNavItem: { flex: 1, borderRadius: 28, alignItems: "center", justifyContent: "center", gap: 2 },
+    floatingNavText: { fontSize: 11, fontFamily: "Pretendard-Medium" },
     header: {
       flexDirection: "row",
       alignItems: "center",
@@ -2663,37 +1726,37 @@ const styles = StyleSheet.create(
     headerActions: { flexDirection: "row", alignItems: "center", gap: 7 },
     title: {
       flexShrink: 1,
-      color: "#102A25",
-      fontSize: 27,
+      color: "#1C1C1E",
+      fontSize: 22,
       fontWeight: "800",
       letterSpacing: -0.7,
     },
     iconButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 10,
-      backgroundColor: "#E3ECEA",
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: "#E5E5EA",
       alignItems: "center",
       justifyContent: "center",
     },
     resetButton: {
-      backgroundColor: "#E3ECEA",
-      borderRadius: 10,
+      backgroundColor: "#E5E5EA",
+      borderRadius: 22,
       paddingHorizontal: 12,
-      paddingVertical: 8,
+      paddingVertical: 12,
     },
-    resetText: { color: "#315C54", fontWeight: "700", fontSize: 13 },
+    resetText: { color: "#48484A", fontWeight: "700", fontSize: 13 },
     card: {
-      backgroundColor: "#FFFFFF",
-      borderRadius: 18,
-      borderWidth: 1,
+      backgroundColor: clinicalTheme(false).surface,
+      borderRadius: 14,
+      borderWidth: 0,
       borderColor: "#E8EEEC",
-      padding: 16,
-      shadowColor: "#173F37",
-      shadowOpacity: 0.045,
+      padding: 14,
+      shadowColor: "#000000",
+      shadowOpacity: 0,
       shadowRadius: 12,
       shadowOffset: { width: 0, height: 4 },
-      elevation: 1,
+      elevation: 0,
     },
     sectionHeading: {
       flexDirection: "row",
@@ -2701,38 +1764,40 @@ const styles = StyleSheet.create(
       marginBottom: 13,
     },
     step: {
-      width: 25,
-      height: 25,
-      backgroundColor: "#087F6D",
-      borderRadius: 8,
+      width: 36,
+      height: 36,
+      backgroundColor: "#E8F4F2",
+      borderRadius: 13,
       alignItems: "center",
       justifyContent: "center",
       marginRight: 9,
     },
     stepText: { color: "#FFFFFF", fontWeight: "800", fontSize: 13 },
+    sectionSubtitle: { color: "#74838A", fontSize: 11, marginLeft: 8, flexShrink: 1 },
+    patientName: { fontSize: 16, fontWeight: "400", minHeight: 52, marginBottom: 0 },
     sectionTitle: {
-      color: "#17322C",
-      fontSize: 18,
+      color: "#1C1C1E",
+      fontSize: 17,
       lineHeight: 23,
-      fontWeight: "800",
+      fontWeight: "600",
       includeFontPadding: false,
     },
     memoInput: {
-      minHeight: 104,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: "#DDE5E3",
-      backgroundColor: "#FAFCFB",
-      paddingHorizontal: 13,
+      minHeight: 96,
+      borderRadius: 0,
+      borderWidth: 0,
+      borderColor: "#D1D1D6",
+      backgroundColor: "transparent",
+      paddingHorizontal: 0,
       paddingTop: 11,
       paddingBottom: 11,
-      color: "#17322C",
-      fontSize: 15,
-      lineHeight: 22,
+      color: "#1C1C1E",
+      fontSize: 17,
+      lineHeight: 25,
       fontWeight: "400",
       includeFontPadding: false,
     },
-    memoInputTall: { minHeight: 138 },
+    memoInputTall: { minHeight: 88 },
     onsetSection: { marginBottom: 13 },
     onsetRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     onsetDayRow: { flexDirection: "row", gap: 5 },
@@ -2741,21 +1806,21 @@ const styles = StyleSheet.create(
       minWidth: 48,
       borderRadius: 10,
       borderWidth: 1,
-      borderColor: "#DDE5E3",
-      backgroundColor: "#FAFCFB",
+      borderColor: "#D1D1D6",
+      backgroundColor: "#F9F9FB",
       alignItems: "center",
       justifyContent: "center",
       paddingHorizontal: 9,
     },
-    onsetDayText: { color: "#536A65", fontSize: 12, fontWeight: "800" },
+    onsetDayText: { color: "#636366", fontSize: 12, fontWeight: "800" },
     onsetInput: {
       flex: 0.66,
       height: 46,
       borderRadius: 11,
       borderWidth: 1,
-      borderColor: "#DDE5E3",
-      backgroundColor: "#FAFCFB",
-      color: "#17322C",
+      borderColor: "#D1D1D6",
+      backgroundColor: "#F9F9FB",
+      color: "#1C1C1E",
       fontSize: 16,
       fontWeight: "600",
       fontVariant: ["tabular-nums"],
@@ -2770,8 +1835,8 @@ const styles = StyleSheet.create(
       height: 46,
       borderRadius: 11,
       borderWidth: 1,
-      borderColor: "#DDE5E3",
-      backgroundColor: "#FAFCFB",
+      borderColor: "#D1D1D6",
+      backgroundColor: "#F9F9FB",
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "flex-start",
@@ -2781,7 +1846,7 @@ const styles = StyleSheet.create(
     onsetDateField: {
       width: 104,
       height: 44,
-      color: "#17322C",
+      color: "#1C1C1E",
       fontSize: 16,
       fontWeight: "600",
       fontVariant: ["tabular-nums"],
@@ -2794,7 +1859,7 @@ const styles = StyleSheet.create(
     },
     onsetDateFieldEmpty: { flex: 1, width: "auto" },
     onsetWeekdayInline: {
-      color: "#17322C",
+      color: "#1C1C1E",
       fontSize: 16,
       fontWeight: "600",
       fontVariant: ["tabular-nums"],
@@ -2805,7 +1870,7 @@ const styles = StyleSheet.create(
       width: 60,
       height: 46,
       borderRadius: 11,
-      backgroundColor: "#087F6D",
+      backgroundColor: "#C9232D",
       alignItems: "center",
       justifyContent: "center",
     },
@@ -2813,7 +1878,7 @@ const styles = StyleSheet.create(
       alignSelf: "flex-end",
       minHeight: 29,
       borderRadius: 9,
-      backgroundColor: "#E8F5F2",
+      backgroundColor: "#F2F2F7",
       flexDirection: "row",
       alignItems: "center",
       gap: 5,
@@ -2821,7 +1886,7 @@ const styles = StyleSheet.create(
       marginTop: 8,
     },
     onsetElapsed: {
-      color: "#087F6D",
+      color: clinicalTheme(false).accent,
       fontSize: 12,
       fontWeight: "700",
     },
@@ -2842,9 +1907,9 @@ const styles = StyleSheet.create(
       gap: 6,
     },
     historyChip: {
-      minHeight: 32,
-      borderRadius: 9,
-      paddingHorizontal: 10,
+      minHeight: 36,
+      borderRadius: 18,
+      paddingHorizontal: 13,
     },
     historyChipText: {
       fontSize: 12,
@@ -2852,25 +1917,25 @@ const styles = StyleSheet.create(
       fontWeight: "600",
     },
     historyChildChip: {
-      backgroundColor: "#E9F6F3",
-      borderColor: "#38A58F",
+      backgroundColor: "#FCEDEF",
+      borderColor: "#C9232D",
       borderWidth: 1.5,
     },
-    historyChildChipText: { color: "#176F60" },
+    historyChildChipText: { color: "#9E1623" },
     historyParentExpanded: {
-      backgroundColor: "#E8ECEB",
-      borderColor: "#B9C4C1",
+      backgroundColor: "#E5E5EA",
+      borderColor: "#C7C7CC",
     },
-    historyParentExpandedText: { color: "#7A8985" },
+    historyParentExpandedText: { color: "#8E8E93" },
     singleInput: {
       height: 46,
       borderRadius: 11,
       borderWidth: 1,
-      borderColor: "#DDE5E3",
-      backgroundColor: "#FAFCFB",
+      borderColor: "#D1D1D6",
+      backgroundColor: "#F9F9FB",
       paddingHorizontal: 12,
       paddingVertical: 0,
-      color: "#17322C",
+      color: "#1C1C1E",
       fontSize: 16,
       fontWeight: "600",
       fontVariant: ["tabular-nums"],
@@ -2887,21 +1952,21 @@ const styles = StyleSheet.create(
     ageBadge: {
       minHeight: 24,
       borderRadius: 8,
-      backgroundColor: "#E3F4F0",
+      backgroundColor: "#F2F2F7",
       paddingHorizontal: 9,
       alignItems: "center",
       justifyContent: "center",
       marginBottom: 5,
     },
-    ageText: { color: "#087F6D", fontSize: 12, fontWeight: "700" },
+    ageText: { color: clinicalTheme(false).accent, fontSize: 12, fontWeight: "700" },
     segmentRow: { flexDirection: "row", gap: 8 },
     segmentButton: {
       flex: 1,
       height: 42,
       borderRadius: 10,
       borderWidth: 1,
-      borderColor: "#DDE5E3",
-      backgroundColor: "#FAFCFB",
+      borderColor: "#D1D1D6",
+      backgroundColor: "#F9F9FB",
       alignItems: "center",
       justifyContent: "center",
     },
@@ -2918,8 +1983,8 @@ const styles = StyleSheet.create(
     },
     scanButtonCompact: { flex: 1, marginTop: 0 },
     disabledButton: { opacity: 0.62 },
-    scanTitle: { color: "#17473E", fontSize: 12, fontWeight: "700" },
-    scanCaption: { color: "#71817E", fontSize: 10, marginTop: 2 },
+    scanTitle: { color: "#3A3A3C", fontSize: 12, fontWeight: "700" },
+    scanCaption: { color: "#8E8E93", fontSize: 10, marginTop: 2 },
     documentSwipe: {
       width: 108,
       height: 64,
@@ -2944,8 +2009,8 @@ const styles = StyleSheet.create(
       height: 64,
       borderRadius: 11,
       borderWidth: 1,
-      borderColor: "#DDE5E3",
-      backgroundColor: "#FAFCFB",
+      borderColor: "#D1D1D6",
+      backgroundColor: "#F9F9FB",
       overflow: "hidden",
     },
     documentPreviewButton: {
@@ -2955,7 +2020,7 @@ const styles = StyleSheet.create(
       justifyContent: "center",
       gap: 7,
     },
-    documentViewText: { color: "#17322C", fontSize: 13, fontWeight: "900" },
+    documentViewText: { color: "#1C1C1E", fontSize: 13, fontWeight: "900" },
     previewBackdrop: {
       flex: 1,
       backgroundColor: "rgba(0,0,0,0.94)",
@@ -2975,7 +2040,7 @@ const styles = StyleSheet.create(
       justifyContent: "center",
     },
     swipeHint: {
-      color: "#71817E",
+      color: "#8E8E93",
       fontSize: 9,
       textAlign: "right",
       marginTop: 5,
@@ -2984,24 +2049,24 @@ const styles = StyleSheet.create(
       minHeight: 38,
       borderRadius: 10,
       borderWidth: 1,
-      borderColor: "#DDE5E3",
-      backgroundColor: "#FAFCFB",
+      borderColor: "#D1D1D6",
+      backgroundColor: "#F9F9FB",
       paddingHorizontal: 12,
       alignItems: "center",
       justifyContent: "center",
     },
     chipText: {
-      color: "#536A65",
+      color: "#636366",
       fontSize: 13,
       lineHeight: 18,
       fontWeight: "600",
       includeFontPadding: false,
     },
-    selectedButton: { backgroundColor: "#087F6D", borderColor: "#087F6D" },
+    selectedButton: { backgroundColor: "#C9232D", borderColor: "#C9232D" },
     selectedText: { color: "#FFFFFF" },
     detailLabel: { marginTop: 14 },
     label: {
-      color: "#586A66",
+      color: "#636366",
       fontSize: 12,
       lineHeight: 17,
       fontWeight: "700",
@@ -3013,14 +2078,14 @@ const styles = StyleSheet.create(
       flex: 1,
       height: 46,
       borderRadius: 12,
-      backgroundColor: "#FAFCFB",
+      backgroundColor: "#F9F9FB",
       borderWidth: 1,
-      borderColor: "#DDE5E3",
+      borderColor: "#D1D1D6",
       justifyContent: "center",
       paddingHorizontal: 12,
     },
     timeValue: {
-      color: "#17322C",
+      color: "#1C1C1E",
       fontSize: 16,
       lineHeight: 20,
       fontWeight: "600",
@@ -3039,7 +2104,7 @@ const styles = StyleSheet.create(
       width: 70,
       height: 46,
       borderRadius: 12,
-      backgroundColor: "#087F6D",
+      backgroundColor: "#C9232D",
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
@@ -3052,7 +2117,7 @@ const styles = StyleSheet.create(
       fontWeight: "700",
       includeFontPadding: false,
     },
-    divider: { height: 1, backgroundColor: "#EDF1F0", marginVertical: 12 },
+    divider: { height: 1, backgroundColor: "#E5E5EA", marginVertical: 12 },
     grid: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -3060,15 +2125,18 @@ const styles = StyleSheet.create(
       rowGap: 7,
     },
     vitalBox: {
-      width: "48.7%",
-      borderWidth: 1,
-      borderColor: "#DDE5E3",
-      backgroundColor: "#FAFCFB",
-      borderRadius: 12,
-      paddingHorizontal: 10,
-      paddingTop: 8,
-      paddingBottom: 5,
+      width: "31.8%",
+      borderWidth: 0,
+      borderTopWidth: 0,
+      borderColor: "#D1D1D6",
+      backgroundColor: "#F2F2F7",
+      borderRadius: 10,
+      paddingHorizontal: 8,
+      paddingTop: 11,
+      paddingBottom: 10,
+      minHeight: 112,
     },
+    vitalBoxFocused: { backgroundColor: "#FCEDEF", borderTopColor: "#C9232D" },
     vitalTop: {
       flexDirection: "row",
       alignItems: "center",
@@ -3076,14 +2144,14 @@ const styles = StyleSheet.create(
       minHeight: 20,
     },
     vitalLabel: {
-      color: "#087F6D",
+      color: "#636366",
       fontSize: 13,
       lineHeight: 18,
-      fontWeight: "800",
+      fontWeight: "500",
       includeFontPadding: false,
     },
     unit: {
-      color: "#84918E",
+      color: "#8E8E93",
       fontSize: 10,
       lineHeight: 15,
       fontWeight: "500",
@@ -3098,10 +2166,10 @@ const styles = StyleSheet.create(
     vitalInput: {
       flex: 1,
       minWidth: 0,
-      color: "#17322C",
-      fontSize: 20,
-      fontWeight: "600",
-      height: 40,
+      color: "#1C1C1E",
+      fontSize: 16,
+      fontWeight: "400",
+      height: 44,
       paddingHorizontal: 0,
       paddingVertical: 0,
       textAlignVertical: "center",
@@ -3110,32 +2178,33 @@ const styles = StyleSheet.create(
     mapBadge: {
       minHeight: 23,
       borderRadius: 7,
-      backgroundColor: "#DDF2ED",
+      backgroundColor: "#F2F2F7",
       flexDirection: "row",
       alignItems: "center",
-      paddingHorizontal: 8,
+      paddingHorizontal: 3,
+      flexWrap: "wrap",
       marginBottom: 1,
     },
-    mapBadgeEmpty: { backgroundColor: "#EEF2F1" },
+    mapBadgeEmpty: { backgroundColor: "#F2F2F7" },
     mapBadgeDanger: {
       backgroundColor: "#FDE8E7",
       borderWidth: 1,
       borderColor: "#F4B4B0",
     },
     mapLabel: {
-      color: "#087F6D",
+      color: clinicalTheme(false).accent,
       fontSize: 10,
       fontWeight: "800",
       marginRight: 6,
     },
-    mapValue: { color: "#17473E", fontSize: 14, fontWeight: "700" },
+    mapValue: { color: "#3A3A3C", fontSize: 14, fontWeight: "700" },
     mapEmpty: { color: "#9AA6A3" },
-    mapUnit: { color: "#71817E", fontSize: 9, marginLeft: 3 },
+    mapUnit: { color: "#8E8E93", fontSize: 9, marginLeft: 3 },
     dangerText: { color: "#C62828" },
     dangerSubText: { color: "#A94343" },
-    settingsTitle: { color: "#17322C", fontSize: 21, fontWeight: "900" },
+    settingsTitle: { color: "#1C1C1E", fontSize: 21, fontWeight: "900" },
     settingsLabel: {
-      color: "#586A66",
+      color: "#636366",
       fontSize: 12,
       fontWeight: "800",
       marginBottom: 1,
@@ -3150,8 +2219,8 @@ const styles = StyleSheet.create(
       minHeight: 66,
       borderRadius: 13,
       borderWidth: 1,
-      borderColor: "#DDE5E3",
-      backgroundColor: "#FAFCFB",
+      borderColor: "#D1D1D6",
+      backgroundColor: "#F9F9FB",
       paddingHorizontal: 14,
       flexDirection: "row",
       alignItems: "center",
@@ -3159,14 +2228,14 @@ const styles = StyleSheet.create(
       marginBottom: 8,
     },
     modeText: { flex: 1 },
-    modeTitle: { color: "#17322C", fontSize: 15, fontWeight: "900" },
-    modeCaption: { color: "#71817E", fontSize: 11, marginTop: 3 },
+    modeTitle: { color: "#1C1C1E", fontSize: 15, fontWeight: "900" },
+    modeCaption: { color: "#8E8E93", fontSize: 11, marginTop: 3 },
     bottomNav: {
-      height: 70,
-      paddingBottom: 7,
+      height: 60,
+      paddingBottom: 2,
       flexDirection: "row",
-      borderTopWidth: 1,
-      borderTopColor: "#DDE5E3",
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: "#D1D1D6",
       backgroundColor: "#FFFFFF",
     },
     bottomNavItem: {
@@ -3175,8 +2244,8 @@ const styles = StyleSheet.create(
       justifyContent: "center",
       gap: 3,
     },
-    bottomNavText: { color: "#8A9995", fontSize: 10, fontWeight: "700" },
-    bottomNavTextActive: { color: "#087F6D", fontWeight: "900" },
+    bottomNavText: { color: "#8E8E93", fontSize: 10, fontWeight: "700" },
+    bottomNavTextActive: { color: clinicalTheme(false).accent, fontWeight: "900" },
     futureCard: {
       minHeight: 360,
       alignItems: "center",
@@ -3187,27 +2256,27 @@ const styles = StyleSheet.create(
       width: 68,
       height: 68,
       borderRadius: 22,
-      backgroundColor: "#E3F4F0",
+      backgroundColor: "#F2F2F7",
       alignItems: "center",
       justifyContent: "center",
       marginBottom: 16,
     },
-    futureTitle: { color: "#17322C", fontSize: 24, fontWeight: "900" },
+    futureTitle: { color: "#1C1C1E", fontSize: 24, fontWeight: "900" },
     futureCaption: {
-      color: "#71817E",
+      color: "#8E8E93",
       fontSize: 13,
       lineHeight: 20,
       textAlign: "center",
       marginTop: 8,
     },
     futureBadge: {
-      backgroundColor: "#E3ECEA",
+      backgroundColor: "#E5E5EA",
       borderRadius: 10,
       paddingHorizontal: 12,
       paddingVertical: 7,
       marginTop: 18,
     },
-    futureBadgeText: { color: "#087F6D", fontSize: 12, fontWeight: "900" },
+    futureBadgeText: { color: clinicalTheme(false).accent, fontSize: 12, fontWeight: "900" },
     cprElapsedTime: {
       color: "#D23B58",
       fontSize: 28,
@@ -3216,7 +2285,7 @@ const styles = StyleSheet.create(
       fontVariant: ["tabular-nums"],
     },
     compressionCountdown: {
-      color: "#087F6D",
+      color: clinicalTheme(false).accent,
       fontSize: 10,
       fontWeight: "900",
       marginTop: 3,
@@ -3228,7 +2297,6 @@ const styles = StyleSheet.create(
       flex: 1,
       justifyContent: "space-between",
       alignItems: "center",
-      backgroundColor: "rgba(0,0,0,0.2)",
       paddingBottom: 34,
     },
     cameraHeader: {
@@ -3260,8 +2328,8 @@ const styles = StyleSheet.create(
       width: "88%",
       aspectRatio: 1.58,
       borderWidth: 2,
-      borderColor: "#84F0D9",
-      borderRadius: 18,
+      borderColor: "#FF6972",
+      borderRadius: 0,
     },
     guideText: {
       color: "#FFFFFF",
@@ -3272,7 +2340,7 @@ const styles = StyleSheet.create(
       textShadowRadius: 4,
     },
     guideSub: {
-      color: "#E1ECE9",
+      color: "#E5E5EA",
       fontSize: 12,
       marginTop: 6,
       textShadowColor: "rgba(0,0,0,0.8)",
@@ -3296,66 +2364,67 @@ const styles = StyleSheet.create(
   }),
 );
 const darkStyles = StyleSheet.create({
-  appBackground: { backgroundColor: "#0C1412" },
-  safe: { backgroundColor: "#0C1412" },
+  appBackground: { backgroundColor: clinicalTheme(true).page },
+  safe: { backgroundColor: clinicalTheme(true).page },
   card: {
-    backgroundColor: "#17211E",
-    borderColor: "#23322E",
+    backgroundColor: clinicalTheme(true).surface,
+    borderColor: clinicalTheme(true).border,
     shadowOpacity: 0,
     elevation: 0,
   },
-  primaryText: { color: "#F0F6F4" },
-  secondaryText: { color: "#B7C8C3" },
-  tertiaryText: { color: "#9AAEA8" },
-  placeholderText: { color: "#8DA29C" },
-  emptyText: { color: "#8DA29C" },
-  accentText: { color: "#67D2BC" },
-  onsetElapsedBadge: { backgroundColor: "#17352F" },
-  softButton: { backgroundColor: "#24332F" },
-  softButtonText: { color: "#D4E3DF" },
+  primaryText: { color: clinicalTheme(true).ink },
+  secondaryText: { color: clinicalTheme(true).muted },
+  tertiaryText: { color: clinicalTheme(true).muted },
+  placeholderText: { color: clinicalTheme(true).placeholder },
+  emptyText: { color: clinicalTheme(true).placeholder },
+  accentText: { color: clinicalTheme(true).accent },
+  onsetElapsedBadge: { backgroundColor: "#242426" },
+  softButton: { backgroundColor: "#2C2C2E" },
+  softButtonText: { color: "#E5E5EA" },
   drawButton: {
-    backgroundColor: "#101916",
-    borderWidth: 1,
-    borderColor: "#3A4D47",
+    backgroundColor: "transparent",
+    borderWidth: 0,
   },
-  drawButtonText: { color: "#FFFFFF" },
-  handwritingPage: { backgroundColor: "#0C1412" },
-  handwritingHeaderButton: { backgroundColor: "#17211E" },
-  handwritingTitle: { color: "#FFFFFF" },
+  drawButtonText: { color: clinicalTheme(true).accent },
+  handwritingPage: { backgroundColor: clinicalTheme(true).page },
+  handwritingHeaderButton: { backgroundColor: clinicalTheme(true).surface },
+  handwritingTitle: { color: clinicalTheme(true).ink },
   handwritingCanvas: {
-    backgroundColor: "#101916",
-    borderColor: "#3A4D47",
+    backgroundColor: clinicalTheme(true).surface,
+    borderColor: clinicalTheme(true).border,
   },
   handwritingTool: {
-    backgroundColor: "#17211E",
-    borderColor: "#3A4D47",
+    backgroundColor: clinicalTheme(true).surface,
+    borderColor: clinicalTheme(true).border,
   },
-  handwritingToolText: { color: "#F0F6F4" },
-  eraserSizeBar: { backgroundColor: "#17211E" },
-  eraserSizeLabel: { color: "#B7C8C3" },
-  eraserSliderTrack: { backgroundColor: "#354741" },
+  handwritingToolText: { color: clinicalTheme(true).ink },
+  eraserSizeBar: { backgroundColor: clinicalTheme(true).surface },
+  eraserSizeLabel: { color: clinicalTheme(true).muted },
+  eraserSliderTrack: { backgroundColor: clinicalTheme(true).border },
   input: {
-    backgroundColor: "#101916",
-    borderColor: "#3A4D47",
-    color: "#F0F6F4",
+    backgroundColor: clinicalTheme(true).field,
+    borderColor: clinicalTheme(true).border,
+    color: clinicalTheme(true).ink,
   },
-  selectedButton: { backgroundColor: "#176F60", borderColor: "#59D2BC" },
+  vitalBox: { backgroundColor: clinicalTheme(true).field, borderColor: clinicalTheme(true).border },
+  vitalBoxFocused: { backgroundColor: "#382126", borderTopColor: "#FF6972" },
+  selectedButton: { backgroundColor: "#9E1623", borderColor: "#FF6972" },
   historyChildChip: {
-    backgroundColor: "#17352F",
-    borderColor: "#67D2BC",
+    backgroundColor: "#242426",
+    borderColor: "#FF6972",
     borderWidth: 1.5,
   },
-  historyChildChipText: { color: "#91E1D1" },
+  historyChildChipText: { color: clinicalTheme(true).accent },
   historyParentExpanded: {
-    backgroundColor: "#222D2A",
-    borderColor: "#465650",
+    backgroundColor: "#2C2C2E",
+    borderColor: clinicalTheme(true).border,
   },
-  historyParentExpandedText: { color: "#91A09C" },
-  divider: { backgroundColor: "#354741" },
-  mapBadge: { backgroundColor: "#17352F" },
+  historyParentExpandedText: { color: clinicalTheme(true).muted },
+  divider: { backgroundColor: clinicalTheme(true).border },
+  mapBadge: { backgroundColor: "#242426" },
   mapBadgeDanger: { backgroundColor: "#451F21", borderColor: "#A65459" },
   dangerText: { color: "#FF8A80" },
   dangerSubText: { color: "#FFB4AE" },
-  bottomNav: { backgroundColor: "#121C19", borderTopColor: "#354741" },
-  bottomNavTextActive: { color: "#67D2BC" },
+  bottomNav: { backgroundColor: clinicalTheme(true).page, borderTopColor: clinicalTheme(true).border },
+  bottomNavTextActive: { color: clinicalTheme(true).accent },
 });

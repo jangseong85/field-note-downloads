@@ -1,0 +1,11 @@
+import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+const source = resolve("web-splash/dist-dock");
+const target = resolve("android/app/src/main/assets/dock");
+let html = readFileSync(resolve(source, "dock.html"), "utf8");
+html = html.replace(/<script[^>]+src="\.\/(.*?)"[^>]*><\/script>/g, (_, path) => `<script type="module" src="data:text/javascript;base64,${readFileSync(resolve(source, path)).toString("base64")}"></script>`);
+html = html.replace(/<link[^>]+href="\.\/(.*?)"[^>]*>/g, (_, path) => `<style>${readFileSync(resolve(source, path), "utf8")}</style>`);
+mkdirSync(target, { recursive: true });
+writeFileSync(resolve(target, "index.html"), html);
+writeFileSync(resolve(target, "LICENSE.md"), readFileSync(resolve("web-splash/src/dock/LICENSE.md")));
+console.log("Dock bundled offline: " + target);

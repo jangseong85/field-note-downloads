@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "구급 메모장",
+    "name": "119 | FIELD 24",
     "slug": "ems-log",
     "version": "1.0.3",
     "icon": "./assets/app-icon.png",
@@ -11,14 +11,17 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.emslog.mobile",
       "infoPlist": {
-        "NSCameraUsageDescription": "신분증에서 생년월일을 인식하기 위해 카메라를 사용합니다. 촬영 이미지는 저장되지 않습니다."
+        "NSCameraUsageDescription": "신분증 인식과 환자 환부 사진 기록을 위해 카메라를 사용합니다. 촬영 자료는 이 기기에만 저장됩니다.",
+        "NSMicrophoneUsageDescription": "환자·보호자의 동의를 받은 현장 녹취를 이 기기에 기록하기 위해 마이크를 사용합니다."
       }
     },
     "android": {
+      "allowBackup": false,
       "versionCode": 4,
       "package": "com.emslog.mobile",
       "permissions": [
-        "CAMERA"
+        "CAMERA",
+        "RECORD_AUDIO"
       ],
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -33,26 +36,24 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "신분증에서 생년월일을 인식하기 위해 카메라 접근을 허용해 주세요.",
+          "cameraPermission": "신분증 인식과 환자 환부 사진 기록을 위해 카메라 접근을 허용해 주세요.",
           "recordAudioAndroid": false
         }
       ],
       "./plugins/withOptionalCamera",
+      "./plugins/withSplashWebAsset",
       "expo-font",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#00666A",
-          "image": "./assets/system-splash-wordmark.png",
-          "imageWidth": 220,
-          "resizeMode": "contain"
+          "backgroundColor": "#000000"
         }
       ],
       "react-native-document-scanner-plugin",
       [
         "expo-audio",
         {
-          "microphonePermission": "SALS 보호자 동의 후 현장 음성을 기록하기 위해 마이크 접근을 허용해 주세요.",
+          "microphonePermission": "환자·보호자 동의 후 현장 음성을 이 기기에 기록하기 위해 마이크 접근을 허용해 주세요.",
           "recordAudioAndroid": true
         }
       ],

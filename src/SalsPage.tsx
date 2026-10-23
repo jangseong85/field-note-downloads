@@ -4,14 +4,15 @@ import {
   AccessibilityInfo,
   Animated,
   AppState,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { NoteModal } from "./NoteDialogs";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { clinicalTheme } from "./clinicalTheme";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle } from "react-native-svg";
 import {
@@ -46,25 +47,8 @@ export default function SalsPage({
   const [reduceMotion, setReduceMotion] = useState(true);
   const pulse = useRef(new Animated.Value(1)).current;
   const saveQueue = useRef(Promise.resolve());
-  const colors = isDark
-    ? {
-        bg: "#17211E",
-        input: "#101916",
-        text: "#F0F6F4",
-        muted: "#B7C8C3",
-        line: "#354741",
-        accent: "#67D2BC",
-        selected: "#176F60",
-      }
-    : {
-        bg: "#FFFFFF",
-        input: "#FAFCFB",
-        text: "#17322C",
-        muted: "#586A66",
-        line: "#DDE5E3",
-        accent: "#087F6D",
-        selected: "#087F6D",
-      };
+  const theme = clinicalTheme(isDark);
+  const colors = { bg: theme.surface, input: theme.field, text: theme.ink, muted: theme.muted, line: theme.border, accent: theme.accent, selected: theme.accentSoft };
   useEffect(() => {
     let mounted = true;
     void AsyncStorage.getItem(STORAGE)
@@ -246,7 +230,7 @@ export default function SalsPage({
       ]}
     >
       <Text
-        style={[styles.action, { color: selected ? "#FFFFFF" : colors.text }]}
+        style={[styles.action, { color: selected ? colors.accent : colors.text }]}
       >
         {label}
       </Text>
@@ -690,7 +674,7 @@ export default function SalsPage({
             </Pressable>
           ))}
       </View>
-      <Modal
+      <NoteModal
         visible={!!editing}
         transparent
         animationType="fade"
@@ -792,7 +776,7 @@ export default function SalsPage({
             </View>
           </View>
         </View>
-      </Modal>
+      </NoteModal>
     </View>
   );
 }

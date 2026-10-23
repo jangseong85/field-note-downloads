@@ -1,0 +1,62 @@
+@import "tailwindcss";
+@font-face {
+  font-family: "Field Barlow";
+  src: url("/field-barlow-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: block;
+}
+* { box-sizing: border-box; }
+html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
+.splash-stage { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000; }
+.art-frame { position: relative; width: min(100vw, 56.25vh); height: min(177.7778vw, 100vh); container-type: inline-size; }
+.art-frame > div:not(.ignition-roof-wash) { animation: scene-in 700ms ease-out both; }
+.ignition-roof-wash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  mix-blend-mode: screen;
+  opacity: calc(var(--neon-ignition, 0) * .55);
+  background:
+    radial-gradient(ellipse at 55% 39%, rgba(255,18,32,.42), rgba(210,0,24,.12) 38%, transparent 67%);
+}
+.art-frame > div > div[aria-hidden="true"] {
+  left: calc(5.2% + 1.5px); right: calc(-5.2% - 1.5px); z-index: 2; mix-blend-mode: screen;
+  mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+}
+/* Replace the registry's horizontal reveal mask with a whole-scene fade. */
+.art-frame > div > div:not([aria-hidden]) {
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
+}
+.splash-content {
+  position: relative; width: 100%; height: 100%;
+  animation: scene-in 800ms ease-out 200ms both;
+}
+.scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
+.splash-content::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to bottom, transparent 62%, rgba(0,0,0,.18) 67%, rgba(0,0,0,.65) 76%, rgba(0,0,0,.88) 91%, #000 100%),
+    linear-gradient(to right, rgba(0,0,0,.12), transparent 12%, transparent 88%, rgba(0,0,0,.12));
+}
+.wordmark {
+  position: absolute; top: 75%; left: 0; right: 0; margin: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center; color: #e7e8e9;
+  font-family: "Field Barlow", Arial, sans-serif;
+  font-size: clamp(32px, 9.6cqw, 48px); font-weight: 700; line-height: 1.15; letter-spacing: 0.035em;
+  animation: scene-in 850ms ease-out 800ms both;
+}
+.brand-type { margin: 0; font: inherit; letter-spacing: inherit; white-space: nowrap; }
+@keyframes scene-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .art-frame > div, .splash-content, .wordmark { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .emergency-light, .ignition-roof-wash { display: none; }
+}

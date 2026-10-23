@@ -1,0 +1,7 @@
+@import "tailwindcss";
+@source "./Dock.tsx";
+html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+body { font-family: system-ui, sans-serif; }
+#root { position: relative; }
+.dock-navigation-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; }
+.dock-navigation-label { font-size: 10px; line-height: 12px; font-weight: 500; white-space: nowrap; }

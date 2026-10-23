@@ -1,0 +1,61 @@
+diff --git a/node_modules/expo-sms/android/src/main/java/expo/modules/sms/SMSModule.kt b/node_modules/expo-sms/android/src/main/java/expo/modules/sms/SMSModule.kt
+index 77a9b33..1d3a20d 100644
+--- a/node_modules/expo-sms/android/src/main/java/expo/modules/sms/SMSModule.kt
++++ b/node_modules/expo-sms/android/src/main/java/expo/modules/sms/SMSModule.kt
+@@ -46,7 +46,19 @@ class SMSModule : Module(), LifecycleEventListener {
+     // ACTION_SEND causes a weird flicker on Android 10 devices if the messaging app is not already
+     // open in the background, but it seems to be the only intent type that works for including
+     // attachments, so we use it if there are attachments and fall back to ACTION_SENDTO otherwise.
+-    val smsIntent = if (options.attachments.isNotEmpty()) {
++    val smsIntent = if (options.attachments.size > 1) {
++      // EMSLog patch: several images go through ACTION_SEND_MULTIPLE, which messaging apps accept
++      // for multi-image MMS. The upstream module only forwards the first attachment.
++      Intent(Intent.ACTION_SEND_MULTIPLE).apply {
++        type = "image/*"
++        putExtra("address", addresses.joinToString(separator = ";"))
++        putParcelableArrayListExtra(
++          Intent.EXTRA_STREAM,
++          ArrayList(options.attachments.map { Uri.parse(it.uri) })
++        )
++        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
++      }
++    } else if (options.attachments.isNotEmpty()) {
+       Intent(Intent.ACTION_SEND).apply {
+         type = "text/plain"
+         putExtra("address", addresses.joinToString(separator = ";"))
+diff --git a/node_modules/expo-sms/build/SMS.js b/node_modules/expo-sms/build/SMS.js
+index 5668236..11d5663 100644
+--- a/node_modules/expo-sms/build/SMS.js
++++ b/node_modules/expo-sms/build/SMS.js
+@@ -5,12 +5,7 @@ function processAttachments(attachments) {
+         return null;
+     }
+     attachments = Array.isArray(attachments) ? attachments : [attachments];
+-    if (Platform.OS === 'android' && attachments.length > 1) {
+-        if (__DEV__) {
+-            console.warn('Android only supports a single attachment. The first array item is used.');
+-        }
+-        attachments = attachments.slice(0, 1);
+-    }
++    // EMSLog patch: the Android module sends several images with ACTION_SEND_MULTIPLE.
+     return attachments;
+ }
+ // @needsAudit
+diff --git a/node_modules/expo-sms/src/SMS.ts b/node_modules/expo-sms/src/SMS.ts
+index d023989..5826d9f 100644
+--- a/node_modules/expo-sms/src/SMS.ts
++++ b/node_modules/expo-sms/src/SMS.ts
+@@ -12,12 +12,7 @@ function processAttachments(
+     return null;
+   }
+   attachments = Array.isArray(attachments) ? attachments : [attachments];
+-  if (Platform.OS === 'android' && attachments.length > 1) {
+-    if (__DEV__) {
+-      console.warn('Android only supports a single attachment. The first array item is used.');
+-    }
+-    attachments = attachments.slice(0, 1);
+-  }
++  // EMSLog patch: the Android module sends several images with ACTION_SEND_MULTIPLE.
+   return attachments;
+ }
+ 
