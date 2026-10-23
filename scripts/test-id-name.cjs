@@ -64,3 +64,18 @@ test("eight-digit dates are not read as resident numbers; gender comes from the 
   assert.equal(licence.gender, "여성", "not the licence number's digit");
   assert.equal(extractIdentity("주민등록증\n홍길동\n100123-3234567", today).birthDate, "20100123");
 });
+test("three independent name reads are decided by majority, enlarged name line first on ties", () => {
+  const { voteName, nameFromLineCrop, findNameLineFrame } = m.exports;
+  assert.equal(voteName(["홍길동", "홍길둥", "홍길동"]), "홍길동");
+  assert.equal(voteName(["홍길동", "흥길동", "홍길둥"]), "홍길동", "all differ: the enlarged line wins");
+  assert.equal(voteName([null, "흥길동", "흥길동"]), "흥길동");
+  assert.equal(voteName([null, null, null]), null);
+  assert.equal(voteName(["홍길동", "홍길", "홍길"]), "홍길동", "a dropped syllable loses to the complete read");
+  assert.equal(voteName(["김철", "김철", null]), "김철", "real two-syllable names stay");
+  assert.equal(voteName(["김철", "이철수", "김철"]), "김철", "a different longer read is not a completion");
+  const line = (text, top) => ({ text, frame: { left: 100, top, right: 400, bottom: top + 40 } });
+  const ocr = { text: "", blocks: [{ lines: [line("자동차운전면허증", 20), line("11-18-123456-70", 80), line("홍길동", 160), line("850108 1234567", 220)] }] };
+  assert.deepEqual(findNameLineFrame(ocr, today), { left: 100, top: 160, right: 400, bottom: 200 });
+  assert.equal(nameFromLineCrop({ text: "", blocks: [{ lines: [line("홍길동 Hong", 0)] }] }), "홍길동");
+  assert.equal(findNameLineFrame({ text: "", blocks: [{ lines: [line("홍길동", 0)] }] }, today), null, "no resident number, no anchor");
+});

@@ -168,16 +168,64 @@ export function extractIdentityFromOcr(result: OcrResult, today = new Date()): S
   if (!residentLine) return identity;
 
   const sameLineName = extractNameFromLine(residentLine.text.replace(residentNumberPattern, " "));
+  return { ...identity, name: sameLineName ?? nearestNameLine(lines, residentLine)?.name ?? identity.name };
+}
+
+/** The line above the resident number that holds the name, with its frame for a closer re-read. */
+function nearestNameLine(lines: OcrLine[], residentLine: OcrLine) {
   const numberHeight = Math.max(1, residentLine.frame.bottom - residentLine.frame.top);
-  const nearbyName = lines
+  return lines
     .filter((line) => line !== residentLine && line.frame.bottom <= residentLine.frame.top + numberHeight * 0.35)
     .map((line) => ({
       name: extractNameFromLine(line.text),
+      frame: line.frame,
       verticalGap: Math.max(0, residentLine.frame.top - line.frame.bottom),
       horizontalGap: Math.abs(line.frame.left - residentLine.frame.left),
     }))
     .filter((candidate) => candidate.name && candidate.verticalGap <= numberHeight * 4.5)
-    .sort((a, b) => (a.verticalGap + a.horizontalGap * 0.15) - (b.verticalGap + b.horizontalGap * 0.15))[0]?.name;
+    .sort((a, b) => (a.verticalGap + a.horizontalGap * 0.15) - (b.verticalGap + b.horizontalGap * 0.15))[0];
+}
 
-  return { ...identity, name: sameLineName ?? nearbyName ?? identity.name };
+/** Frame of the name line in OCR pixels, to crop and re-read it larger (small licence print is often misread). */
+export function findNameLineFrame(result: OcrResult, today = new Date()): IdentityRegion | null {
+  const lines = result.blocks.flatMap((block) => block.lines);
+  const residentLine = lines.find((line) => residentCandidates(normalizeDigits(line.text), today).length > 0);
+  if (!residentLine) return null;
+  return nearestNameLine(lines, residentLine)?.frame ?? null;
+}
+
+/** Name read from a crop that holds only the name line. */
+export function nameFromLineCrop(result: OcrResult): string | null {
+  for (const line of result.blocks.flatMap((block) => block.lines)) {
+    const name = extractNameFromLine(line.text);
+    if (name) return name;
+  }
+  return null;
+}
+
+/**
+ * Majority vote between independent reads of the same name. Ties go to the earliest entry,
+ * so callers list the most reliable read first (the enlarged name line).
+ */
+export function voteName(reads: (string | null)[]): string | null {
+  const counts = new Map<string, number>();
+  for (const read of reads) if (read) counts.set(read, (counts.get(read) ?? 0) + 1);
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const read of reads) {
+    if (!read) continue;
+    const count = counts.get(read)!;
+    if (count > bestCount) {
+      best = read;
+      bestCount = count;
+    }
+  }
+  // OCR on small licence print tends to drop a syllable (or turn it into Latin letters), not add one.
+  // A read that is the winner plus the missing syllable(s) is the complete name.
+  if (best) {
+    const winner = best;
+    const fuller = reads.find((read): read is string => !!read && read.length > winner.length && read.startsWith(winner));
+    if (fuller) return fuller;
+  }
+  return best;
 }

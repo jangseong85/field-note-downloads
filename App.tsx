@@ -12,6 +12,7 @@ import SquishThemeSwitch from "./src/SquishThemeSwitch";
 import RecordAffiliation, { loadSender } from "./src/RecordAffiliation";
 import type { SenderInfo } from "./src/smsMessage";
 import RecordOptionsPopover, { PopoverAnchor } from "./src/RecordOptionsPopover";
+import { RecordTabs } from "./src/ClinicalControls";
 import { CenteredDialog, NoteDialogHost, NoteDialogProvider, NoteModal, useNoteAlert } from "./src/NoteDialogs";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
@@ -46,6 +47,9 @@ import {
   calculateAge,
   extractIdentityFromOcr,
   findIdentityRegion,
+  findNameLineFrame,
+  nameFromLineCrop,
+  voteName,
 } from "./src/idDate";
 
 void SplashScreen.preventAutoHideAsync();
@@ -632,6 +636,8 @@ function FieldNoteApp() {
         await import("@infinitered/react-native-mlkit-text-recognition");
       const result = await recognizeText(savedUri);
       let identity = extractIdentityFromOcr(result);
+      const fullName = identity.name;
+      let focusedName: string | null = null;
       const region = findIdentityRegion(result);
       if (region) {
         const source =
@@ -665,6 +671,7 @@ function FieldNoteApp() {
         try {
           const focusedResult = await recognizeText(croppedImage.uri);
           const focusedIdentity = extractIdentityFromOcr(focusedResult);
+          focusedName = focusedIdentity.name;
           identity = {
             name: focusedIdentity.name ?? identity.name,
             birthDate: focusedIdentity.birthDate ?? identity.birthDate,
@@ -675,6 +682,33 @@ function FieldNoteApp() {
             idempotent: true,
           }).catch(() => undefined);
         }
+      }
+      // Small licence print is often misread glyph by glyph: re-read only the name line, enlarged,
+      // then take the majority of the three independent reads (enlarged line first on ties).
+      const nameFrame = findNameLineFrame(result);
+      if (nameFrame) {
+        const source = await ImageManipulator.ImageManipulator.manipulate(savedUri).renderAsync();
+        const lineHeight = Math.max(1, nameFrame.bottom - nameFrame.top);
+        const originX = Math.max(0, Math.floor(nameFrame.left - lineHeight * 1.2));
+        const originY = Math.max(0, Math.floor(nameFrame.top - lineHeight * 0.6));
+        const width = Math.max(1, Math.min(source.width - originX, Math.ceil(nameFrame.right - nameFrame.left + lineHeight * 2.4)));
+        const height = Math.max(1, Math.min(source.height - originY, Math.ceil(lineHeight * 2.2)));
+        // Two enlargements: ML Kit drops different syllables at different scales.
+        const lineReads: (string | null)[] = [];
+        for (const target of [400, 240]) {
+          const context = ImageManipulator.ImageManipulator.manipulate(savedUri);
+          context.crop({ originX, originY, width, height });
+          if (height < target) context.resize({ width: null, height: target });
+          const lineRef = await context.renderAsync();
+          const lineImage = await lineRef.saveAsync({ compress: 1, format: ImageManipulator.SaveFormat.JPEG });
+          try {
+            lineReads.push(nameFromLineCrop(await recognizeText(lineImage.uri)));
+          } finally {
+            void FileSystem.deleteAsync(lineImage.uri, { idempotent: true }).catch(() => undefined);
+          }
+        }
+        const voted = voteName([...lineReads, focusedName, fullName]);
+        identity = { ...identity, name: voted ?? identity.name };
       }
       const previousUri = form.idDocument?.uri;
       setForm((previous) => ({
@@ -787,7 +821,7 @@ function FieldNoteApp() {
             visible={drawingTarget !== null}
             isDark={isDark}
             title={
-              drawingTarget === "historyDrawing" ? "History" : "Chief Complaint"
+              drawingTarget === "historyDrawing" ? (medicalTerms ? "PHx" : "병력 손글씨") : medicalTerms ? "C/C" : "주증상 손글씨"
             }
             initialUri={drawingTarget ? form[drawingTarget] : null}
             onClose={() => void closeDrawing()}
@@ -1140,46 +1174,37 @@ function HandwritingModal({
       onRequestClose={() => { if (!savingRef.current) onClose(); }}
     >
       <SafeAreaView
-        style={[styles.handwritingPage, isDark && darkStyles.handwritingPage]}
+        style={[styles.handwritingPage, { backgroundColor: clinicalTheme(isDark).page }]}
         edges={["top", "bottom"]}
       >
         <View style={styles.handwritingHeader}>
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="손글씨 닫기"
             disabled={saving}
             onPress={() => { if (!savingRef.current) onClose(); }}
-            style={[
-              styles.handwritingHeaderButton,
-              isDark && darkStyles.handwritingHeaderButton,
-            ]}
+            style={[styles.handwritingRound, { backgroundColor: clinicalTheme(isDark).field }]}
           >
-            <Ionicons
-              name="close"
-              size={25}
-              color={isDark ? "#FFFFFF" : "#1C1C1E"}
-            />
+            <Ionicons name="close" size={20} color={clinicalTheme(isDark).ink} />
           </Pressable>
-          <Text
-            style={[
-              styles.handwritingTitle,
-              isDark && darkStyles.handwritingTitle,
-            ]}
-          >
-            {title}
-          </Text>
+          <Text style={[styles.handwritingTitle, { color: clinicalTheme(isDark).ink }]}>{title}</Text>
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={saveFailed ? "손글씨 저장 재시도" : "손글씨 저장"}
             disabled={(paths.length === 0 && !initialUri) || saving}
             onPress={() => void save()}
             style={[
-              styles.handwritingSave,
-              (paths.length === 0 && !initialUri) || saving
-                ? styles.disabledButton
-                : undefined,
+              saveFailed ? styles.handwritingRetry : styles.handwritingRound,
+              { backgroundColor: saveFailed ? clinicalTheme(isDark).danger : clinicalTheme(isDark).accent },
+              (paths.length === 0 && !initialUri) || saving ? styles.disabledButton : undefined,
             ]}
           >
             {saving ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <ActivityIndicator size="small" color={clinicalTheme(isDark).surface} />
+            ) : saveFailed ? (
+              <Text style={[styles.handwritingRetryText, { color: clinicalTheme(isDark).surface }]}>재시도</Text>
             ) : (
-              <Text style={styles.handwritingSaveText}>{saveFailed ? "저장 재시도" : "저장"}</Text>
+              <Ionicons name="checkmark" size={21} color={clinicalTheme(isDark).surface} />
             )}
           </Pressable>
         </View>
@@ -1189,7 +1214,7 @@ function HandwritingModal({
           collapsable={false}
           style={[
             styles.handwritingCanvas,
-            isDark && darkStyles.handwritingCanvas,
+            { backgroundColor: clinicalTheme(isDark).surface, borderColor: clinicalTheme(isDark).border },
           ]}
           {...panResponder.panHandlers}
         >
@@ -1238,76 +1263,38 @@ function HandwritingModal({
             }}
           />
         )}
-        <View style={styles.handwritingTools}>
-          <Pressable
-            disabled={saving || saveFailed}
-            onPress={() =>
-              setEraserEnabled((previous) => {
-                eraserEnabledRef.current = !previous;
-                return !previous;
-              })
-            }
-            style={[
-              styles.handwritingTool,
-              isDark && darkStyles.handwritingTool,
-              eraserEnabled && styles.handwritingToolSelected,
-            ]}
-          >
-            {eraserEnabled ? (
-              <Ionicons name="pencil" size={20} color="#FFFFFF" />
-            ) : (
-              <MaterialCommunityIcons
-                name="eraser"
-                size={20}
-                color={isDark ? "#F2F2F7" : "#48484A"}
-              />
-            )}
-            <Text
-              style={[
-                styles.handwritingToolText,
-                isDark && darkStyles.handwritingToolText,
-                eraserEnabled && styles.handwritingToolSelectedText,
-              ]}
-            >
-              {eraserEnabled ? "펜" : "지우개"}
-            </Text>
-          </Pressable>
-          {paths.length > 0 && (
-            <Pressable
+        <View style={[styles.handwritingTools, { backgroundColor: clinicalTheme(isDark).surface, borderColor: clinicalTheme(isDark).border }]}>
+          <View style={styles.handwritingMode}>
+            <RecordTabs
+              isDark={isDark}
+              label="펜과 지우개 선택"
+              selectionRole="radio"
+              options={[{ id: "pen", label: "펜" }, { id: "eraser", label: "지우개" }]}
+              selectedId={eraserEnabled ? "eraser" : "pen"}
               disabled={saving || saveFailed}
-              onPress={() => setPaths((previous) => previous.slice(0, -1))}
-              style={[
-                styles.handwritingTool,
-                isDark && darkStyles.handwritingTool,
-              ]}
-            >
-              <Ionicons
-                name="arrow-undo"
-                size={20}
-                color={isDark ? "#F2F2F7" : "#48484A"}
-              />
-              <Text
-                style={[
-                  styles.handwritingToolText,
-                  isDark && darkStyles.handwritingToolText,
-                ]}
-              >
-                실행 취소
-              </Text>
-            </Pressable>
-          )}
+              onSelect={(id) => {
+                eraserEnabledRef.current = id === "eraser";
+                setEraserEnabled(id === "eraser");
+              }}
+            />
+          </View>
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="실행 취소"
+            disabled={saving || saveFailed || paths.length === 0}
+            onPress={() => setPaths((previous) => previous.slice(0, -1))}
+            style={[styles.handwritingRound, { backgroundColor: clinicalTheme(isDark).field }, paths.length === 0 && styles.disabledButton]}
+          >
+            <Ionicons name="arrow-undo" size={19} color={clinicalTheme(isDark).ink} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="손글씨 모두 지우기"
             disabled={paths.length === 0}
             onPress={() => setPaths([])}
-            style={[
-              styles.handwritingTool,
-              isDark && darkStyles.handwritingTool,
-            ]}
+            style={[styles.handwritingRound, { backgroundColor: clinicalTheme(isDark).field }, paths.length === 0 && styles.disabledButton]}
           >
-            <Ionicons name="trash-outline" size={20} color="#C62828" />
-            <Text style={[styles.handwritingToolText, styles.dangerText]}>
-              삭제
-            </Text>
+            <Ionicons name="trash-outline" size={19} color={clinicalTheme(isDark).danger} />
           </Pressable>
         </View>
       </SafeAreaView>
@@ -1509,8 +1496,7 @@ const styles = StyleSheet.create(
     },
     handwritingPage: {
       flex: 1,
-      backgroundColor: "#EFF3F2",
-      paddingHorizontal: 15,
+      paddingHorizontal: 16,
     },
     handwritingHeader: {
       height: 62,
@@ -1518,62 +1504,27 @@ const styles = StyleSheet.create(
       alignItems: "center",
       justifyContent: "space-between",
     },
-    handwritingHeaderButton: {
-      width: 42,
-      height: 42,
-      borderRadius: 12,
-      backgroundColor: "#FFFFFF",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    handwritingTitle: { color: "#1C1C1E", fontSize: 17, fontWeight: "900" },
-    handwritingSave: {
-      minWidth: 74,
-      height: 42,
-      borderRadius: 11,
-      borderWidth: 1,
-      borderColor: "#C9232D",
-      backgroundColor: "#C9232D",
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 7,
-      paddingHorizontal: 12,
-    },
-    handwritingSaveText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
+    handwritingRound: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+    handwritingRetry: { minWidth: 72, height: 44, borderRadius: 22, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
+    handwritingRetryText: { fontSize: 15, fontFamily: "Pretendard-SemiBold" },
+    handwritingMode: { flex: 1, minWidth: 0 },
+    handwritingTitle: { fontSize: 17, fontFamily: "Pretendard-SemiBold" },
     handwritingCanvas: {
       flex: 1,
-      backgroundColor: "#FFFFFF",
-      borderRadius: 16,
+      borderRadius: 24,
       overflow: "hidden",
       borderWidth: 1,
       borderColor: "#D4DEDB",
     },
     handwritingTools: {
-      height: 72,
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "center",
-      gap: 10,
+      gap: 8,
+      marginVertical: 10,
+      padding: 6,
+      borderRadius: 30,
+      borderWidth: StyleSheet.hairlineWidth,
     },
-    handwritingTool: {
-      height: 42,
-      borderRadius: 11,
-      borderWidth: 1,
-      borderColor: "#D5E0DD",
-      backgroundColor: "#FFFFFF",
-      paddingHorizontal: 12,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 7,
-    },
-    handwritingToolText: { color: "#48484A", fontSize: 13, fontWeight: "800" },
-    handwritingToolSelected: {
-      backgroundColor: "#C9232D",
-      borderColor: "#C9232D",
-    },
-    handwritingToolSelectedText: { color: "#FFFFFF" },
     eraserSizeBar: {
       height: 72,
       marginTop: 10,
@@ -2376,18 +2327,6 @@ const darkStyles = StyleSheet.create({
     borderWidth: 0,
   },
   drawButtonText: { color: clinicalTheme(true).accent },
-  handwritingPage: { backgroundColor: clinicalTheme(true).page },
-  handwritingHeaderButton: { backgroundColor: clinicalTheme(true).surface },
-  handwritingTitle: { color: clinicalTheme(true).ink },
-  handwritingCanvas: {
-    backgroundColor: clinicalTheme(true).surface,
-    borderColor: clinicalTheme(true).border,
-  },
-  handwritingTool: {
-    backgroundColor: clinicalTheme(true).surface,
-    borderColor: clinicalTheme(true).border,
-  },
-  handwritingToolText: { color: clinicalTheme(true).ink },
   eraserSizeBar: { backgroundColor: clinicalTheme(true).surface },
   eraserSizeLabel: { color: clinicalTheme(true).muted },
   eraserSliderTrack: { backgroundColor: clinicalTheme(true).border },
