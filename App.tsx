@@ -1,12 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { normalizeDesign } from "./src/design";
 import { clinicalTheme } from "./src/clinicalTheme";
-import { MemoAttachment } from "./src/MemoAttachments";
 import { createMediaSaveTask, MediaSaveTask, runMediaSave } from "./src/mediaSave";
-import { planPatientWorkspaceReset, updatePatientById } from "./src/patientUpdates";
-import { addMeasurement, blankMeasurement, deleteMeasurement, normalizeMeasurements, selectMeasurement, snapshotMeasurements, VitalMeasurement } from "./src/vitalMeasurements";
-import { formatTimestamp, parseTimestamp } from "./src/dateTime";
-import { Frame, expandGuide, guideToPhotoCrop } from "./src/cameraCrop";
+import { planPatientWorkspaceReset } from "./src/patientUpdates";
+import { addMeasurement, deleteMeasurement, selectMeasurement, snapshotMeasurements } from "./src/vitalMeasurements";
+import { formatTimestamp } from "./src/dateTime";
+import { Frame } from "./src/cameraCrop";
 import PatientNoteScreen from "./src/PatientNoteScreen";
 import SquishThemeSwitch from "./src/SquishThemeSwitch";
 import RecordAffiliation, { loadSender } from "./src/RecordAffiliation";
@@ -16,7 +15,6 @@ import { RecordTabs } from "./src/ClinicalControls";
 import { CenteredDialog, NoteDialogHost, NoteDialogProvider, NoteModal, useNoteAlert } from "./src/NoteDialogs";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
-import * as ImageManipulator from "expo-image-manipulator";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -42,64 +40,13 @@ import {
   useColorScheme,
   View,
 } from "react-native";
-import {
-  extractIdentityFromOcr,
-  findIdentityRegion,
-  findNameLineFrame,
-  nameFromLineCrop,
-  voteName,
-} from "./src/idDate";
+import { migrateStoredForm, patientFileUris, type FormState } from "./src/patientWorkspace";
+import { usePatientWorkspace } from "./src/usePatientWorkspace";
+import { usePatientFileCleanup } from "./src/usePatientFileCleanup";
+import { captureIdentityDocument } from "./src/identityCapture";
 
 void SplashScreen.preventAutoHideAsync();
 
-type IdDocument = {
-  uri: string;
-  name: string | null;
-  birthDate: string | null;
-  capturedAt: string;
-};
-type FormState = {
-  attachments: MemoAttachment[];
-  vitalMeasurements: VitalMeasurement[];
-  activeMeasurementId: string;
-  patientId: string;
-  chiefComplaint: string;
-  onsetDate: string;
-  onsetTime: string;
-  measuredAt: string;
-  measuredDate: string;
-  measuredTime: string;
-  bp: string;
-  pr: string;
-  rr: string;
-  spo2: string;
-  bt: string;
-  bst: string;
-  historyMemo: string;
-  name: string;
-  birthDate: string;
-  gender: string;
-  patientPhone: string;
-  guardianPhone: string;
-  guardianName: string;
-  guardianRelation: string;
-  history: string[];
-  idDocument: IdDocument | null;
-  chiefComplaintDrawing: string | null;
-  historyDrawing: string | null;
-};
-type LegacyFormState = Partial<FormState> & {
-  complaintTags?: string[];
-  vitalRecords?: unknown;
-  dialysisStatus?: string;
-  cancerHistory?: string;
-  mentalHistory?: string;
-  memo?: string;
-};
-
-const STORAGE_KEY = "ems-log.current-patient.v1";
-type PatientRecord = { id: string; form: FormState };
-type PatientWorkspace = { version: 2; activeId: string; patients: PatientRecord[] };
 const THEME_KEY = "ems-log.theme.v1";
 // plugins/withSplashWebAsset.js가 prebuild 때 넣는 단일 HTML 스플래시
 const SPLASH_URI = Platform.OS === "ios"
@@ -108,52 +55,6 @@ const SPLASH_URI = Platform.OS === "ios"
 const WHEEL_PICKER_KEY = "ems-log.wheel-picker.v1";
 const MEDICAL_TERMS_KEY = "ems-log.medical-terms.v1";
 const ERASER_SIZE_KEY = "ems-log.eraser-size.v1";
-const EMPTY: FormState = {
-  attachments: [],
-  vitalMeasurements: [blankMeasurement("first")],
-  activeMeasurementId: "first",
-  patientId: "",
-  chiefComplaint: "",
-  onsetDate: "",
-  onsetTime: "",
-  measuredAt: "",
-  measuredDate: "",
-  measuredTime: "",
-  bp: "",
-  pr: "",
-  rr: "",
-  spo2: "",
-  bt: "",
-  bst: "",
-  historyMemo: "",
-  name: "",
-  birthDate: "",
-  gender: "",
-  patientPhone: "",
-  guardianPhone: "",
-  guardianName: "",
-  guardianRelation: "",
-  history: [],
-  idDocument: null,
-  chiefComplaintDrawing: null,
-  historyDrawing: null,
-};
-
-function koreanNow(): string {
-  const parts = new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
-  const get = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? "";
-  return `${get("year")}. ${get("month")}. ${get("day")}. ${get("hour")}:${get("minute")}`;
-}
-
 function displayBirthDate(value: string | null): string {
   if (!value) return "";
   const digits = value.replace(/\D/g, "").slice(0, 8);
@@ -182,49 +83,6 @@ function formatBodyTemperature(previousValue: string, value: string): string {
 }
 
 
-function migrateStoredForm(stored: LegacyFormState): FormState {
-  const storedWithoutVitalRecords = { ...stored };
-  delete storedWithoutVitalRecords.vitalRecords;
-  const patientId =
-    stored.patientId ||
-    [
-      stored.name && `성함: ${stored.name}`,
-      stored.birthDate && `생년월일: ${stored.birthDate}`,
-      stored.gender && `성별: ${stored.gender}`,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-  const chiefComplaint = [
-    (stored.complaintTags ?? []).join(", "),
-    stored.chiefComplaint,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  const historyLines = [
-    (stored.history ?? []).length > 0 &&
-      `과거력: ${(stored.history ?? []).join(", ")}`,
-    stored.dialysisStatus &&
-      stored.dialysisStatus !== "해당 없음" &&
-      `투석: ${stored.dialysisStatus}`,
-    stored.cancerHistory && `암: ${stored.cancerHistory}`,
-    stored.mentalHistory && `정신질환: ${stored.mentalHistory}`,
-    stored.memo,
-  ].filter(Boolean);
-  return {
-    ...EMPTY,
-    ...storedWithoutVitalRecords,
-    attachments: Array.isArray(stored.attachments) ? stored.attachments.filter(item => item && typeof item.id === "string" && typeof item.uri === "string" && (item.kind === "photo" || item.kind === "audio")) : [],
-    ...normalizeMeasurements(stored.vitalMeasurements, stored.activeMeasurementId),
-    measuredDate: stored.measuredDate ?? parseTimestamp(stored.measuredAt ?? "").date,
-    measuredTime: stored.measuredTime ?? parseTimestamp(stored.measuredAt ?? "").time,
-    patientId,
-    chiefComplaint,
-    historyMemo: typeof stored.historyMemo === "string" ? stored.historyMemo : historyLines.join("\n"),
-    history: stored.history ?? [],
-    idDocument: stored.idDocument ?? null,
-  };
-}
-
 export default function App() {
   return <NoteDialogProvider><FieldNoteApp /></NoteDialogProvider>;
 }
@@ -251,23 +109,16 @@ function FieldNoteApp() {
     "Pretendard-Bold": require("pretendard/dist/public/static/Pretendard-Bold.otf"),
   });
   const systemColorScheme = useColorScheme();
-  const [form, setForm] = useState<FormState>(EMPTY);
-  const [patients, setPatients] = useState<PatientRecord[]>([{ id: "initial", form: EMPTY }]);
-  const [activePatientId, setActivePatientId] = useState("initial");
-  const workspaceRef = useRef<PatientWorkspace>({ version: 2, activeId: activePatientId, patients });
-  workspaceRef.current = { version: 2, activeId: activePatientId, patients: patients.map(patient => patient.id === activePatientId ? { ...patient, form } : patient) };
+  const { store, status: recoveryStatus, busy: deletingPatient, form, patients, activePatientId, setForm, commitPatientUpdate } = usePatientWorkspace(() => Alert.alert("저장 안내", "입력 내용의 임시 저장에 실패했습니다. 저장 공간을 확인해 주세요."));
+  const loaded = recoveryStatus !== "loading";
+  const cleanupFiles = usePatientFileCleanup(uri => patientFileUris(store.getSnapshot().workspace).includes(uri));
+  const deleteLocalFile = (uri: string | null) => cleanupFiles([uri]);
   const drawingSaveBusy = useRef(false);
   const drawingSaveTask = useRef<{ patientId: string; field: "chiefComplaintDrawing" | "historyDrawing"; previousUri: string | null; task: MediaSaveTask<string> } | null>(null);
-  const [deletingPatient, setDeletingPatient] = useState(false);
   const [mediaBusy, setMediaBusy] = useState(false);
-  const [loaded, setLoaded] = useState(false);
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark">(
     "system",
   );
-  const skipInitialSave = useRef(true);
-  const patientSaveQueue = useRef<Promise<void>>(Promise.resolve());
-  const patientSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const resettingPatient = useRef(false);
   const [activeTab, setActiveTab] = useState<
     "memo" | "mci" | "settings"
   >("memo");
@@ -326,89 +177,16 @@ function FieldNoteApp() {
       : themeMode === "dark";
 
   useEffect(() => {
-    Promise.all([
-      AsyncStorage.getItem(STORAGE_KEY),
-      AsyncStorage.getItem(THEME_KEY),
-    ])
-      .then(async ([saved, savedTheme]) => {
-        if (
-          savedTheme === "light" ||
-          savedTheme === "dark" ||
-          savedTheme === "system"
-        )
-          setThemeMode(savedTheme);
-        if (saved) {
-          const stored = JSON.parse(saved) as PatientWorkspace & LegacyFormState;
-          if (stored.version === 2 && Array.isArray(stored.patients) && stored.patients.length > 0) {
-            const restored = stored.patients.map((patient) => ({ id: patient.id, form: migrateStoredForm(patient.form) }));
-            const active = restored.find((patient) => patient.id === stored.activeId) ?? restored[0];
-            if (!active) throw new Error("No saved patient");
-            setPatients(restored);
-            setActivePatientId(active.id);
-            setForm(active.form);
-          } else {
-            const restored = migrateStoredForm(stored);
-            setPatients([{ id: "initial", form: restored }]);
-            setForm(restored);
-          }
-        }
-        await AsyncStorage.multiRemove([
-          "ems-log.input-mode.v1",
-          "ems-log.auto-delete-hours.v1",
-          "ems-log.updated-at.v1",
-        ]);
-      })
-      .catch(() =>
-        Alert.alert("안내", "이전에 작성한 내용을 불러오지 못했습니다."),
-      )
-      .finally(() => setLoaded(true));
+    let active = true;
+    void AsyncStorage.getItem(THEME_KEY).then(value => {
+      if (active && (value === "light" || value === "dark" || value === "system")) setThemeMode(value);
+    }).catch(() => { if (active) Alert.alert("화면 설정", "화면 설정을 불러오지 못했습니다."); });
+    return () => { active = false; };
   }, []);
 
-  useEffect(() => {
-    if (!loaded || (!fontsLoaded && !fontError) || resettingPatient.current)
-      return;
-    if (skipInitialSave.current) {
-      skipInitialSave.current = false;
-      return;
-    }
-    const timer = setTimeout(() => {
-      patientSaveTimer.current = null;
-      patientSaveQueue.current = patientSaveQueue.current
-        .catch(() => undefined)
-        .then(() => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(workspaceRef.current)));
-      void patientSaveQueue.current.catch(() =>
-        Alert.alert("저장 안내", "입력 내용의 임시 저장에 실패했습니다."),
-      );
-    }, 250);
-    patientSaveTimer.current = timer;
-    return () => {
-      clearTimeout(timer);
-      if (patientSaveTimer.current === timer) patientSaveTimer.current = null;
-    };
-  }, [form, patients, activePatientId, loaded, fontsLoaded, fontError]);
-
-  const commitPatientUpdate = async (patientId: string, updateForm: (previous: FormState) => FormState) => {
-    const task = patientSaveQueue.current.catch(() => undefined).then(async () => {
-      const snapshot = updatePatientById(workspaceRef.current, patientId, updateForm);
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-      // Preserve any typing that happened during the storage write.
-      const latest = updatePatientById(workspaceRef.current, patientId, updateForm);
-      workspaceRef.current = latest;
-      setPatients(latest.patients);
-      if (latest.activeId === patientId) setForm(previous => updateForm(previous));
-    });
-    patientSaveQueue.current = task;
-    await task;
-  };
-
   const selectPatient = (id?: string) => {
-    if (!loaded || scannerBusy || mediaBusy || drawingSaveBusy.current || resettingPatient.current || drawingTarget || cameraVisible) return;
-    const current = patients.map((patient) => patient.id === activePatientId ? { ...patient, form } : patient);
-    const target = id ? current.find((patient) => patient.id === id) : { id: `patient-${Date.now()}`, form: { ...EMPTY, history: [] } };
-    if (!target) return;
-    setPatients(id ? current : [...current, target]);
-    setActivePatientId(target.id);
-    setForm(target.form);
+    if (recoveryStatus !== "ready" || scannerBusy || mediaBusy || drawingSaveBusy.current || store.getSnapshot().busy || drawingTarget || cameraVisible) return;
+    store.select(id ?? `patient-${Date.now()}`, id ? undefined : migrateStoredForm({}));
     scrollRef.current?.scrollTo({ y: 0, animated: true });
   };
 
@@ -439,46 +217,33 @@ function FieldNoteApp() {
   };
   const deleteDocument = async () => {
     const uri = form.idDocument?.uri;
-    setForm((previous) => ({ ...previous, idDocument: null }));
-    if (uri)
-      await FileSystem.deleteAsync(uri, { idempotent: true }).catch(
-        () => undefined,
-      );
+    try {
+      await commitPatientUpdate(activePatientId, previous => ({ ...previous, idDocument: null }));
+      await deleteLocalFile(uri ?? null);
+    } catch { Alert.alert("삭제 실패", "신분증 기록을 저장하지 못했습니다. 기존 사진은 유지됩니다."); }
   };
-  const deleteLocalFile = (uri: string | null) =>
-    uri
-      ? FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined)
-      : Promise.resolve();
   const requestDeletePatient = () => {
-    if (!loaded || scannerBusy || mediaBusy || resettingPatient.current || cameraVisible || drawingTarget) return;
-    const index = patients.findIndex((patient) => patient.id === activePatientId);
+    if (recoveryStatus !== "ready" || scannerBusy || mediaBusy || store.getSnapshot().busy || cameraVisible || drawingTarget) return;
+    const id = activePatientId;
+    const index = patients.findIndex(patient => patient.id === id);
     const label = form.name.trim() || `환자 ${index + 1}`;
     Alert.alert(`${label} 기록 삭제`, "이 환자의 입력 내용과 촬영·필기 자료를 삭제합니다. 다른 환자 기록은 유지됩니다. 삭제 후에는 복구할 수 없습니다.", [
       { text: "취소", style: "cancel" },
       { text: "삭제", style: "destructive", onPress: async () => {
-        if (resettingPatient.current) return;
-        resettingPatient.current = true;
-        setDeletingPatient(true);
-        if (patientSaveTimer.current) clearTimeout(patientSaveTimer.current);
-        patientSaveTimer.current = null;
-        const remaining = patients.filter((patient) => patient.id !== activePatientId);
-        const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)] ?? { id: `patient-${Date.now()}`, form: { ...EMPTY, history: [] } };
-        const nextPatients = remaining.length ? remaining : [next];
+        if (store.getSnapshot().busy) return;
+        let uris: string[] = [];
         try {
-          patientSaveQueue.current = patientSaveQueue.current.catch(() => undefined).then(() => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, activeId: next.id, patients: nextPatients })));
-          await patientSaveQueue.current;
-          setPatients(nextPatients);
-          setActivePatientId(next.id);
-          setForm(next.form);
-          const retainedUris = new Set(nextPatients.flatMap((patient) => [patient.form.idDocument?.uri, patient.form.chiefComplaintDrawing, patient.form.historyDrawing, ...patient.form.attachments.map(item => item.uri)]));
-          await Promise.all([form.idDocument?.uri, form.chiefComplaintDrawing, form.historyDrawing, ...form.attachments.map(item => item.uri)].filter((uri): uri is string => !!uri && !retainedUris.has(uri)).map(deleteLocalFile));
+          await store.replace(current => {
+            const removed = current.patients.find(patient => patient.id === id);
+            if (!removed) throw new Error("Patient no longer exists");
+            uris = patientFileUris({ version: 2, activeId: id, patients: [removed] });
+            const remaining = current.patients.filter(patient => patient.id !== id);
+            const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)] ?? { id: `patient-${Date.now()}`, form: migrateStoredForm({}) };
+            return { version: 2, activeId: next.id, patients: remaining.length ? remaining : [next] };
+          });
+          await cleanupFiles(uris);
           scrollRef.current?.scrollTo({ y: 0, animated: true });
-        } catch {
-          Alert.alert("삭제 실패", "기록을 삭제하지 못했습니다. 기존 기록은 유지됩니다. 다시 시도해 주세요.");
-        } finally {
-          resettingPatient.current = false;
-          setDeletingPatient(false);
-        }
+        } catch { Alert.alert("삭제 실패", "기록을 삭제하지 못했습니다. 기존 기록은 유지됩니다. 다시 시도해 주세요."); }
       } },
     ]);
   };
@@ -498,7 +263,7 @@ function FieldNoteApp() {
       await runMediaSave(pending.task, FileSystem, savedUri => commitPatientUpdate(pending.patientId, previous => ({ ...previous, [pending.field]: savedUri })));
       drawingSaveTask.current = null;
       setDrawingTarget(null);
-      const retained = workspaceRef.current.patients.some(patient => patient.form.chiefComplaintDrawing === pending.previousUri || patient.form.historyDrawing === pending.previousUri);
+      const retained = store.getSnapshot().workspace.patients.some(patient => patient.form.chiefComplaintDrawing === pending.previousUri || patient.form.historyDrawing === pending.previousUri);
       if (!retained) await deleteLocalFile(pending.previousUri);
     } finally {
       drawingSaveBusy.current = false;
@@ -514,63 +279,37 @@ function FieldNoteApp() {
     drawingSaveTask.current = null;
     setDrawingTarget(null);
   };
-  const deleteDrawing = (key: "chiefComplaintDrawing" | "historyDrawing") => {
+  const deleteDrawing = async (key: "chiefComplaintDrawing" | "historyDrawing") => {
     const uri = form[key];
-    setForm((previous) => ({ ...previous, [key]: null }));
-    void deleteLocalFile(uri);
+    try {
+      await commitPatientUpdate(activePatientId, previous => ({ ...previous, [key]: null }));
+      await deleteLocalFile(uri);
+    } catch { Alert.alert("삭제 실패", "필기 기록을 저장하지 못했습니다. 기존 필기는 유지됩니다."); }
   };
-  const reset = () =>
-    Alert.alert(
-      "환자 기록 전체 초기화",
-      "등록된 모든 환자의 인적사항, 주증상, 활력징후, 병력·메모와 사진·녹취·필기 자료가 삭제됩니다. 삭제 후에는 복구할 수 없습니다. 전체 초기화할까요?",
-      [
-        { text: "취소", style: "cancel" },
-        {
-          text: "전체 초기화",
-          style: "destructive",
-          onPress: async () => {
-            if (resettingPatient.current) return;
-            if (scannerBusy || mediaBusy || drawingSaveBusy.current || cameraVisible || drawingTarget) {
-              Alert.alert(
-                "초기화 안내",
-                "촬영이나 녹취를 마친 후 초기화해 주세요.",
-              );
-              return;
-            }
-            resettingPatient.current = true;
-            setDeletingPatient(true);
-            if (patientSaveTimer.current)
-              clearTimeout(patientSaveTimer.current);
-            patientSaveTimer.current = null;
-            const blank = { id: `patient-reset-${Date.now()}`, form: { ...EMPTY, history: [], attachments: [], vitalMeasurements: [blankMeasurement("first")] } };
-            const { next, uris } = planPatientWorkspaceReset(workspaceRef.current, blank);
-            try {
-              // Queue behind older writes so they cannot restore pre-reset data.
-              patientSaveQueue.current = patientSaveQueue.current
-                .catch(() => undefined)
-                .then(() =>
-                  AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)),
-                );
-              await patientSaveQueue.current;
-              workspaceRef.current = next;
-              setPatients(next.patients);
-              setActivePatientId(next.activeId);
-              setForm(blank.form);
-              scrollRef.current?.scrollTo({ y: 0, animated: true });
-              await Promise.all(uris.map(deleteLocalFile));
-            } catch {
-              Alert.alert(
-                "초기화 실패",
-                "저장소를 비우지 못했습니다. 입력 내용은 유지됩니다. 다시 시도해 주세요.",
-              );
-            } finally {
-              resettingPatient.current = false;
-              setDeletingPatient(false);
-            }
-          },
-        },
-      ],
-    );
+  const reset = () => Alert.alert(
+    "환자 기록 전체 초기화",
+    "등록된 모든 환자의 인적사항, 주증상, 활력징후, 병력·메모와 사진·녹취·필기 자료가 삭제됩니다. 삭제 후에는 복구할 수 없습니다. 전체 초기화할까요?",
+    [
+      { text: "취소", style: "cancel" },
+      { text: "전체 초기화", style: "destructive", onPress: async () => {
+        if (recoveryStatus !== "ready" || store.getSnapshot().busy) return;
+        if (scannerBusy || mediaBusy || drawingSaveBusy.current || cameraVisible || drawingTarget) {
+          Alert.alert("초기화 안내", "촬영이나 녹취를 마친 후 초기화해 주세요.");
+          return;
+        }
+        let uris: string[] = [];
+        try {
+          await store.replace(current => {
+            const plan = planPatientWorkspaceReset(current, { id: `patient-reset-${Date.now()}`, form: migrateStoredForm({}) });
+            uris = plan.uris;
+            return plan.next;
+          });
+          await cleanupFiles(uris);
+          scrollRef.current?.scrollTo({ y: 0, animated: true });
+        } catch { Alert.alert("초기화 실패", "저장소를 비우지 못했습니다. 입력 내용은 유지됩니다. 다시 시도해 주세요."); }
+      } },
+    ],
+  );
   const openIdentityCamera = async () => {
     if (scannerBusy) return;
     const permission = cameraPermission?.granted
@@ -588,169 +327,41 @@ function FieldNoteApp() {
   const captureIdentity = async () => {
     if (scannerBusy) return;
     setScannerBusy(true);
-    const pendingFiles = new Set<string>();
+    const patientId = activePatientId;
+    const previousUri = form.idDocument?.uri;
     try {
-      // Freeze the measured preview/guide before the camera closes or layouts change.
       const viewport = { ...cameraLayout };
       const guide = { ...guideFrame, y: guideTop + guideFrame.y };
       if (!viewport.width || !viewport.height || !guide.width || !guide.height) throw new Error("촬영 가이드가 준비되지 않았습니다. 잠시 후 다시 촬영해 주세요.");
-      const photo = await cameraRef.current?.takePictureAsync({
-        quality: 1,
-        skipProcessing: false,
-        shutterSound: false,
-      });
+      const photo = await cameraRef.current?.takePictureAsync({ quality: 1, skipProcessing: false, shutterSound: false });
       if (!photo?.uri) return;
-      pendingFiles.add(photo.uri);
       NativeModules.SoftShutter?.play();
       setCameraVisible(false);
-      // CameraView는 세로 화면을 채우기 위해 센서 사진의 좌우를 잘라 보여 줍니다.
-      // 화면의 카드 가이드와 같은 중앙 영역만 먼저 잘라 OCR에 전달하면 글자가 훨씬 크게 들어옵니다.
-      const capturedSource = await ImageManipulator.ImageManipulator.manipulate(
-        photo.uri,
-      ).renderAsync();
-      const crop = guideToPhotoCrop(capturedSource, viewport, expandGuide(guide, viewport));
-      const preparedContext = ImageManipulator.ImageManipulator.manipulate(photo.uri);
-      preparedContext.crop(crop);
-      if (crop.width < 1800)
-        preparedContext.resize({ width: 1800, height: null });
-      const preparedRef = await preparedContext.renderAsync();
-      const preparedImage = await preparedRef.saveAsync({
-        compress: 1,
-        format: ImageManipulator.SaveFormat.JPEG,
-      });
-      const imageUri = preparedImage.uri;
-      pendingFiles.add(imageUri);
-      const documentsDirectory = `${FileSystem.documentDirectory}identity-documents/`;
-      await FileSystem.makeDirectoryAsync(documentsDirectory, {
-        intermediates: true,
-      });
-      const savedUri = `${documentsDirectory}id-${Date.now()}.jpg`;
-      pendingFiles.add(savedUri);
-      await FileSystem.copyAsync({ from: imageUri, to: savedUri });
-      void FileSystem.deleteAsync(imageUri, { idempotent: true }).catch(
-        () => undefined,
-      );
-      const { recognizeText } =
-        await import("@infinitered/react-native-mlkit-text-recognition");
-      const result = await recognizeText(savedUri);
-      let identity = extractIdentityFromOcr(result);
-      const fullName = identity.name;
-      let focusedName: string | null = null;
-      const region = findIdentityRegion(result);
-      if (region) {
-        const source =
-          await ImageManipulator.ImageManipulator.manipulate(
-            savedUri,
-          ).renderAsync();
-        const originX = Math.max(0, Math.floor(region.left));
-        const originY = Math.max(0, Math.floor(region.top));
-        const width = Math.max(
-          1,
-          Math.min(
-            source.width - originX,
-            Math.ceil(region.right - region.left),
-          ),
-        );
-        const height = Math.max(
-          1,
-          Math.min(
-            source.height - originY,
-            Math.ceil(region.bottom - region.top),
-          ),
-        );
-        const context = ImageManipulator.ImageManipulator.manipulate(savedUri);
-        context.crop({ originX, originY, width, height });
-        if (width < 1500) context.resize({ width: 1500, height: null });
-        const croppedRef = await context.renderAsync();
-        const croppedImage = await croppedRef.saveAsync({
-          compress: 1,
-          format: ImageManipulator.SaveFormat.JPEG,
-        });
-        try {
-          const focusedResult = await recognizeText(croppedImage.uri);
-          const focusedIdentity = extractIdentityFromOcr(focusedResult);
-          focusedName = focusedIdentity.name;
-          identity = {
-            name: focusedIdentity.name ?? identity.name,
-            birthDate: focusedIdentity.birthDate ?? identity.birthDate,
-            gender: focusedIdentity.gender ?? identity.gender,
-          };
-        } finally {
-          void FileSystem.deleteAsync(croppedImage.uri, {
-            idempotent: true,
-          }).catch(() => undefined);
-        }
-      }
-      // Small licence print is often misread glyph by glyph: re-read only the name line, enlarged,
-      // then take the majority of the three independent reads (enlarged line first on ties).
-      const nameFrame = findNameLineFrame(result);
-      if (nameFrame) {
-        const source = await ImageManipulator.ImageManipulator.manipulate(savedUri).renderAsync();
-        const lineHeight = Math.max(1, nameFrame.bottom - nameFrame.top);
-        const originX = Math.max(0, Math.floor(nameFrame.left - lineHeight * 1.2));
-        const originY = Math.max(0, Math.floor(nameFrame.top - lineHeight * 0.6));
-        const width = Math.max(1, Math.min(source.width - originX, Math.ceil(nameFrame.right - nameFrame.left + lineHeight * 2.4)));
-        const height = Math.max(1, Math.min(source.height - originY, Math.ceil(lineHeight * 2.2)));
-        // Two enlargements: ML Kit drops different syllables at different scales.
-        const lineReads: (string | null)[] = [];
-        for (const target of [400, 240]) {
-          const context = ImageManipulator.ImageManipulator.manipulate(savedUri);
-          context.crop({ originX, originY, width, height });
-          if (height < target) context.resize({ width: null, height: target });
-          const lineRef = await context.renderAsync();
-          const lineImage = await lineRef.saveAsync({ compress: 1, format: ImageManipulator.SaveFormat.JPEG });
-          try {
-            lineReads.push(nameFromLineCrop(await recognizeText(lineImage.uri)));
-          } finally {
-            void FileSystem.deleteAsync(lineImage.uri, { idempotent: true }).catch(() => undefined);
-          }
-        }
-        const voted = voteName([...lineReads, focusedName, fullName]);
-        identity = { ...identity, name: voted ?? identity.name };
-      }
-      const previousUri = form.idDocument?.uri;
-      setForm((previous) => ({
+      const identity = await captureIdentityDocument(photo.uri, viewport, guide, value => commitPatientUpdate(patientId, previous => ({
         ...previous,
-        idDocument: {
-          uri: savedUri,
-          name: identity.name,
-          birthDate: identity.birthDate,
-          capturedAt: koreanNow(),
-        },
-        ...(identity.name ? { name: identity.name } : {}),
-        ...(identity.birthDate ? { birthDate: identity.birthDate } : {}),
-        ...(identity.gender ? { gender: identity.gender } : {}),
-      }));
-      pendingFiles.delete(savedUri);
-      if (previousUri && previousUri !== savedUri)
-        void FileSystem.deleteAsync(previousUri, { idempotent: true }).catch(
-          () => undefined,
-        );
-      if (!identity.name && !identity.birthDate) {
-        Alert.alert(
-          "자료는 저장했습니다",
-          "성명과 생년월일은 인식하지 못했습니다. 빛 반사를 피해서 다시 촬영해 주세요.",
-        );
-        return;
+        idDocument: value.document,
+        ...(value.document.name ? { name: value.document.name } : {}),
+        ...(value.document.birthDate ? { birthDate: value.document.birthDate } : {}),
+        ...(value.gender ? { gender: value.gender } : {}),
+      })), cleanupFiles);
+      await deleteLocalFile(previousUri ?? null);
+      if (!identity.document.name && !identity.document.birthDate) {
+        Alert.alert("자료는 저장했습니다", "성명과 생년월일은 인식하지 못했습니다. 빛 반사를 피해서 다시 촬영해 주세요.");
+      } else {
+        Alert.alert("인식 완료", `성명: ${identity.document.name ?? "인식 안 됨"}\n생년월일: ${displayBirthDate(identity.document.birthDate) || "인식 안 됨"}`);
       }
-      Alert.alert(
-        "인식 완료",
-        `성명: ${identity.name ?? "인식 안 됨"}\n생년월일: ${displayBirthDate(identity.birthDate) || "인식 안 됨"}`,
-        [{ text: "확인" }],
-      );
     } catch (error) {
-      Alert.alert(
-        "신분증 인식 오류",
-        error instanceof Error
-          ? error.message
-          : "카메라 또는 문자 인식을 실행하지 못했습니다.",
-      );
-    } finally {
-      await Promise.all([...pendingFiles].map((uri) => deleteLocalFile(uri)));
-      setScannerBusy(false);
-    }
+      Alert.alert("신분증 인식 오류", error instanceof Error ? error.message : "카메라 또는 문자 인식을 실행하지 못했습니다.");
+    } finally { setScannerBusy(false); }
   };
 
+  if (recoveryStatus === "error") return <View style={[styles.loading, { backgroundColor: clinicalTheme(isDark).page, padding: 24, gap: 16 }]}>
+    <Text style={{ color: clinicalTheme(isDark).ink, fontSize: 18, textAlign: "center" }}>기존 환자 기록을 불러오지 못했습니다.</Text>
+    <Text style={{ color: clinicalTheme(isDark).muted, textAlign: "center" }}>기록 보호를 위해 입력과 저장을 중지했습니다. 저장 공간을 확인한 뒤 다시 시도해 주세요.</Text>
+    <Pressable accessibilityRole="button" onPress={() => void store.restore()} style={{ minHeight: 48, justifyContent: "center", paddingHorizontal: 24 }}>
+      <Text style={{ color: clinicalTheme(isDark).accent, fontSize: 16 }}>불러오기 재시도</Text>
+    </Pressable>
+  </View>;
   if (!loaded || (!fontsLoaded && !fontError))
     return (
       <View style={styles.loading}>
@@ -794,7 +405,7 @@ function FieldNoteApp() {
                   onVitalChange={(key, value) => setForm(previous => ({ ...previous, [key]: key === "bp" ? formatBloodPressure(previous.bp, value) : key === "bt" ? formatBodyTemperature(previous.bt, value) : value }))}
                   onHistoryChange={history => setForm(previous => ({ ...previous, history }))}
                   onDraw={field => { if (mediaBusy) { Alert.alert("녹취 진행 중", "녹취를 중지한 후 손글씨를 열어 주세요."); return; } setDrawingTarget(field); }}
-                  onDeleteDrawing={deleteDrawing} onAppend={attachment => commitPatientUpdate(activePatientId, previous => ({ ...previous, attachments: previous.attachments.some(item => item.id === attachment.id) ? previous.attachments : [...previous.attachments, attachment] }))} onMediaBusyChange={setMediaBusy}
+                  onDeleteDrawing={key => void deleteDrawing(key)} onAppend={attachment => commitPatientUpdate(activePatientId, previous => ({ ...previous, attachments: previous.attachments.some(item => item.id === attachment.id) ? previous.attachments : [...previous.attachments, attachment] }))} onMediaBusyChange={setMediaBusy}
                   sender={sender}
                   medicalTerms={medicalTerms}
                   onRemoveAttachment={async attachment => {

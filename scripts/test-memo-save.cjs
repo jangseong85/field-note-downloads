@@ -23,8 +23,8 @@ test("explicit all-patient reset removes all records and deduplicates patient-ow
   assert.equal(uris.some(uri => uri.includes("sals")), false);
   const app = fs.readFileSync(path.join(__dirname, "../App.tsx"), "utf8");
   const reset = app.slice(app.indexOf("const reset ="), app.indexOf("const openIdentityCamera ="));
-  assert.ok(reset.indexOf("await patientSaveQueue.current") < reset.indexOf("setPatients(next.patients)"));
-  assert.ok(reset.indexOf("setPatients(next.patients)") < reset.indexOf("uris.map(deleteLocalFile)"));
+  assert.ok(reset.indexOf("await store.replace(") >= 0);
+  assert.ok(reset.indexOf("await store.replace(") < reset.indexOf("await cleanupFiles(uris)"));
   assert.doesNotMatch(reset, /AsyncStorage\.clear|removeItem|multiRemove/);
 });
 function fixture() {
@@ -146,7 +146,7 @@ test("actual drawing handler binds to patient A while a delayed file transfer co
   const files = { documentDirectory: "file:///documents/", makeDirectoryAsync: () => gate, moveAsync: async () => {} };
   const commit = async (id, update) => { workspace = updatePatientById(workspace, id, update); workspaceRef.current = workspace; };
   const code = ts.transpileModule(handler, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
-  const save = new Function("drawingSaveBusy", "drawingTarget", "FileSystem", "drawingSaveTask", "activePatientId", "form", "createMediaSaveTask", "runMediaSave", "commitPatientUpdate", "setDrawingTarget", "workspaceRef", "deleteLocalFile", code + "\nreturn saveDrawing;")(drawingSaveBusy, "chiefComplaintDrawing", files, drawingSaveTask, "A", workspace.patients[0].form, createMediaSaveTask, runMediaSave, commit, () => {}, workspaceRef, async () => {});
+  const save = new Function("drawingSaveBusy", "drawingTarget", "FileSystem", "drawingSaveTask", "activePatientId", "form", "createMediaSaveTask", "runMediaSave", "commitPatientUpdate", "setDrawingTarget", "store", "deleteLocalFile", code + "\nreturn saveDrawing;")(drawingSaveBusy, "chiefComplaintDrawing", files, drawingSaveTask, "A", workspace.patients[0].form, createMediaSaveTask, runMediaSave, commit, () => {}, { getSnapshot: () => ({ workspace: workspaceRef.current }) }, async () => {});
   const pending = save("file:///cache/A.png");
   assert.equal(drawingSaveBusy.current, true);
   workspace = { ...workspace, activeId: "B" };

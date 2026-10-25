@@ -72,7 +72,7 @@ test("both contact inputs preserve all pasted digits without native length trunc
   }
 });
 test("contacts are blank by default and patient-owned; affiliation is separate storage", () => {
-  const app = read("App.tsx");
+  const app = read("App.tsx") + read("src/patientWorkspace.ts");
   for (const field of ["patientPhone", "guardianPhone", "guardianName", "guardianRelation"]) assert.match(app, new RegExp(`${field}: ""`));
   assert.match(read("src/PatientNoteScreen.tsx"), /PatientContacts\s+key=\{p.activePatientId\}/);
   assert.match(read("src/RecordAffiliation.tsx"), /ems-log.affiliation.v1/);

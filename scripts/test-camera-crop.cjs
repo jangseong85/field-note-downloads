@@ -35,7 +35,9 @@ test("clips edge overlap and rejects invalid or unmeasured geometry", () => {
 });
 test("camera mask and crop share measured guide coordinates", () => {
   const app = fs.readFileSync(path.join(__dirname, "../App.tsx"), "utf8");
-  assert.match(app, /guideToPhotoCrop\(capturedSource, viewport, expandGuide\(guide, viewport\)\)/, "crop starts from the same measured guide as the mask");
+  const capture = fs.readFileSync(path.join(__dirname, "../src/identityCapture.ts"), "utf8");
+  assert.match(capture, /guideToPhotoCrop\(capturedSource, viewport, expandGuide\(guide, viewport\)\)/, "crop starts from the same measured guide as the mask");
+  assert.match(app, /captureIdentityDocument\(photo.uri, viewport, guide/);
   assert.match(app, /setGuideFrame\(\{ x: layout.x, y: layout.y, width: layout.width, height: layout.height \}\)/);
   assert.match(app, /guideTop \+ guideFrame.y/);
   assert.doesNotMatch(app, /portrait \? 0.62 : 0.9/);
@@ -52,5 +54,5 @@ test("the OCR crop keeps a margin around the guide so edge text survives a loose
   const tight = guideToPhotoCrop({ width: 3024, height: 4032 }, viewport, guide);
   assert.ok(crop.width > tight.width && crop.height > tight.height);
   assert.ok(crop.originX >= 0 && crop.originX + crop.width <= 3024);
-  assert.match(fs.readFileSync(path.join(__dirname, "../App.tsx"), "utf8"), /guideToPhotoCrop\(capturedSource, viewport, expandGuide\(guide, viewport\)\)/);
+  assert.match(fs.readFileSync(path.join(__dirname, "../src/identityCapture.ts"), "utf8"), /guideToPhotoCrop\(capturedSource, viewport, expandGuide\(guide, viewport\)\)/);
 });

@@ -40,10 +40,7 @@ assert.equal(malformed.vitalMeasurements[0].bp, "110/70");
 assert.notEqual(malformed.vitalMeasurements[0].id, malformed.vitalMeasurements[1].id);
 assert.equal(malformed.activeMeasurementId, "a");
 // Exercise the real app's migration, not just the measurement helper.
-const appSource = fs.readFileSync(path.join(__dirname, "../App.tsx"), "utf8");
-const defaults = appSource.slice(appSource.indexOf("const EMPTY: FormState ="), appSource.indexOf("function koreanNow()"));
-const migration = appSource.slice(appSource.indexOf("function migrateStoredForm("), appSource.indexOf("export default function App()"));
-const migrate = new Function("blankMeasurement", "normalizeMeasurements", "parseTimestamp", ts.transpileModule(defaults + migration, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText + "\nreturn migrateStoredForm;")(m.blankMeasurement, m.normalizeMeasurements, value => { const digits = value.replace(/\D/g, ""); return { date: digits.slice(0, 8), time: digits.slice(8, 12) }; });
+const { migrateStoredForm: migrate } = require("./load-ts.cjs")("patientWorkspace");
 const oldPatient = { name: "migration-test", birthDate: "19850108", gender: "여성", chiefComplaint: "기존 입력", history: ["고혈압"], historyMemo: "기존 메모", bp: "125/80", measuredAt: "2026. 10. 21. 08:15", chiefComplaintDrawing: "file:///private-note.png" };
 const migrated = migrate(oldPatient);
 for (const key of ["name", "birthDate", "gender", "chiefComplaint", "historyMemo", "bp", "chiefComplaintDrawing"]) assert.equal(migrated[key], oldPatient[key]);
