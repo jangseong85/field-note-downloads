@@ -210,7 +210,8 @@ test("memo and app use central dialogs, not the native Alert import", () => {
   const app = read("App.tsx");
   assert.match(app, /<NoteDialogProvider>/);
   assert.match(app, /<NoteDialogHost isDark=\{isDark\}/);
-  assert.equal((app.match(/<SquishThemeSwitch\b/g) || []).length, 4, "dark mode, wheel picker, medical terms in the Android dialog + settings");
+  assert.equal((app.match(/<SquishThemeSwitch\b/g) || []).length, 3, "quick settings retain their three controls");
+  assert.equal((read("src/SettingsScreen.tsx").match(/<SquishThemeSwitch\b/g) || []).length, 3, "the settings screen offers the same three controls");
   assert.doesNotMatch(app, /text: isDark \? "라이트 모드로 변경"/);
   assert.doesNotMatch(read("src/SquishThemeSwitch.tsx"), /Ionicons|sunny|moon/);
   assert.doesNotMatch(read("src/SquishThemeSwitch.tsx"), /useNativeDriver: true/);
@@ -346,4 +347,35 @@ test("segment active copy aligns with the actual tab bounds when icon content gr
   const labels=find(copies,"View").filter(node=>Array.isArray(node.props.style));
   assert.equal(labels.length,2);
   labels.forEach(node=>assert.equal(flatten(node.props.style).height,72,"both layers center their content inside the same actual row height"));
+});
+
+test("home displays device affiliation and routes to memo/settings without mutating patient records", () => {
+  const h=harness("src/HomeScreen.tsx"), calls=[];
+  const root=h.render(h.exports.default,{isDark:false,sender:{affiliation:"테스트119안전센터",rank:"소방교",name:"대원"},onOpenMemo:()=>calls.push("memo"),onOpenSettings:()=>calls.push("settings")});
+  const text=find(root,"Text").map(node=>node.props.children.flat(Infinity).join("")).join(" ");
+  assert.match(text,/테스트119안전센터/);
+  assert.match(text,/소방교 대원/);
+  const buttons=find(root,"Pressable");
+  buttons.find(node=>node.props.accessibilityLabel==="환자 메모 열기").props.onPress();
+  buttons.find(node=>node.props.accessibilityLabel==="소속과 대원 정보 설정").props.onPress();
+  assert.deepEqual(calls,["memo","settings"]);
+  const app=read("App.tsx");
+  assert.match(app,/useState<AppTab>\("home"\)/);
+  const header=app.slice(app.indexOf('<View style={styles.noteAppHeader}>'),app.indexOf('{activeTab === "home" ? ('));
+  assert.doesNotMatch(header,/affiliation/);
+});
+
+test("settings preserves all device preference callbacks and affiliation editing", () => {
+  const h=harness("src/SettingsScreen.tsx"), calls=[];
+  const props={isDark:true,useWheelPicker:false,wheelPreferenceReady:false,medicalTerms:true,
+    onThemeChange:value=>calls.push(["theme",value]), onWheelChange:value=>calls.push(["wheel",value]), onMedicalTermsChange:value=>calls.push(["terms",value]), onAffiliationSaved:value=>calls.push(["sender",value])};
+  const root=h.render(h.exports.default,props);
+  const switches=find(root,"Switch");
+  assert.equal(switches.length,3);
+  assert.deepEqual(switches.map(node=>node.props.checked),[true,false,true]);
+  assert.equal(switches[1].props.disabled,true);
+  switches[0].props.onChange(false);
+  switches[2].props.onChange(false);
+  find(root,"Affiliation")[0].props.onSaved({affiliation:"변경"});
+  assert.deepEqual(calls,[["theme",false],["terms",false],["sender",{affiliation:"변경"}]]);
 });

@@ -7,6 +7,9 @@ import { addMeasurement, deleteMeasurement, selectMeasurement, snapshotMeasureme
 import { formatTimestamp } from "./src/dateTime";
 import { Frame } from "./src/cameraCrop";
 import PatientNoteScreen from "./src/PatientNoteScreen";
+import HomeScreen from "./src/HomeScreen";
+import SettingsScreen from "./src/SettingsScreen";
+import { NAVIGATION_ITEMS, navigationItemHeight as compactNavigationItemHeight, type AppTab } from "./src/navigation";
 import SquishThemeSwitch from "./src/SquishThemeSwitch";
 import RecordAffiliation, { loadSender } from "./src/RecordAffiliation";
 import type { SenderInfo } from "./src/smsMessage";
@@ -111,8 +114,7 @@ function FieldNoteApp() {
   });
   const systemColorScheme = useColorScheme();
   const { fontScale } = useWindowDimensions();
-  // 22px icon + 3px gap + scaled 17px caption line + the segment's 9px padding on each side.
-  const navigationItemHeight = Math.max(64, Math.ceil(22 + 3 + 17 * fontScale + 18));
+  const navigationItemHeight = compactNavigationItemHeight(fontScale);
   const { store, status: recoveryStatus, busy: deletingPatient, form, patients, activePatientId, setForm, commitPatientUpdate } = usePatientWorkspace(() => Alert.alert("저장 안내", "입력 내용의 임시 저장에 실패했습니다. 저장 공간을 확인해 주세요."));
   const loaded = recoveryStatus !== "loading";
   const cleanupFiles = usePatientFileCleanup(uri => patientFileUris(store.getSnapshot().workspace).includes(uri));
@@ -123,9 +125,7 @@ function FieldNoteApp() {
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark">(
     "system",
   );
-  const [activeTab, setActiveTab] = useState<
-    "memo" | "mci" | "settings"
-  >("memo");
+  const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [scannerBusy, setScannerBusy] = useState(false);
   const [sender, setSender] = useState<SenderInfo>({ affiliation: "", rank: "", name: "" });
   const affiliation = sender.affiliation;
@@ -187,6 +187,15 @@ function FieldNoteApp() {
     }).catch(() => { if (active) Alert.alert("화면 설정", "화면 설정을 불러오지 못했습니다."); });
     return () => { active = false; };
   }, []);
+
+  const navigate = (tab: AppTab) => {
+    if (mediaBusy) {
+      Alert.alert("기록 진행 중", "녹취를 중지하거나 촬영을 마친 후 이동해 주세요.");
+      return;
+    }
+    setActiveTab(tab);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
 
   const selectPatient = (id?: string) => {
     if (recoveryStatus !== "ready" || scannerBusy || mediaBusy || drawingSaveBusy.current || store.getSnapshot().busy || drawingTarget || cameraVisible) return;
@@ -394,10 +403,15 @@ function FieldNoteApp() {
               keyboardDismissMode="interactive"
             >
               <View style={styles.noteAppHeader}>
-                <View style={{ flex: 1, minWidth: 0, gap: 6 }}><View style={styles.noteBrand}><Text style={[styles.noteBrandNumber, { color: clinicalTheme(isDark).brand }]}>119</Text><Text style={[styles.noteBrandText, { color: clinicalTheme(isDark).muted }, { fontSize: 12, letterSpacing: 1.2 }]}>FIELD NOTE</Text></View>{!!affiliation && <Text style={{ color: clinicalTheme(isDark).ink, fontSize: 30, fontFamily: "Pretendard-Bold", letterSpacing: -0.6 }}>{affiliation}</Text>}{activeTab !== "memo" && <Text style={[styles.noteTitle, { color: clinicalTheme(isDark).ink }]}>{activeTab === "settings" ? "설정" : "다수사상자"}</Text>}</View>
+                <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
+                  <View style={styles.noteBrand}><Text style={[styles.noteBrandNumber, { color: clinicalTheme(isDark).brand }]}>119</Text><Text style={[styles.noteBrandText, { color: clinicalTheme(isDark).muted }, { fontSize: 12, letterSpacing: 1.2 }]}>FIELD NOTE</Text></View>
+                  {activeTab !== "memo" && <Text style={[styles.noteTitle, { color: clinicalTheme(isDark).ink }]}>{activeTab === "home" ? "홈" : activeTab === "settings" ? "설정" : "다수사상자"}</Text>}
+                </View>
                 <Pressable ref={optionsButtonRef} accessibilityRole="button" accessibilityLabel="화면 및 기록 옵션" onPress={openOptions} style={[styles.noteHeaderMenu, { borderRadius: 22, backgroundColor: clinicalTheme(isDark).surface, borderWidth: StyleSheet.hairlineWidth, borderColor: clinicalTheme(isDark).border }]}><Ionicons name="ellipsis-horizontal" size={20} color={clinicalTheme(isDark).ink} /></Pressable>
               </View>
-              {activeTab === "memo" ? (
+              {activeTab === "home" ? (
+                <HomeScreen isDark={isDark} sender={sender} onOpenMemo={() => navigate("memo")} onOpenSettings={() => navigate("settings")} />
+              ) : activeTab === "memo" ? (
                 <PatientNoteScreen isDark={isDark} form={form} useWheelPicker={useWheelPicker}
                   patients={patients.map((patient, index) => ({ id: patient.id, label: (patient.id === activePatientId ? form.name : patient.form.name).trim() || `환자 ${index + 1}` }))} activePatientId={activePatientId}
                   measurements={snapshotMeasurements(form)}
@@ -419,7 +433,10 @@ function FieldNoteApp() {
                   }}
                 />
               ) : activeTab === "settings" ? (
-                <SettingsPage isDark={isDark} onThemeChange={changeTheme} />
+                <SettingsScreen isDark={isDark} useWheelPicker={useWheelPicker} wheelPreferenceReady={wheelPreferenceReady}
+                  medicalTerms={medicalTerms} onThemeChange={changeTheme}
+                  onWheelChange={value => void changeWheelPreference(value)}
+                  onMedicalTermsChange={value => void changeMedicalTerms(value)} onAffiliationSaved={setSender} />
               ) : activeTab === "mci" ? (
                 <FuturePage isDark={isDark} />
               ) : null}
@@ -429,7 +446,7 @@ function FieldNoteApp() {
             itemHeight={navigationItemHeight}
             activeTab={activeTab}
             isDark={isDark}
-            onSelect={tab => { if (mediaBusy) { Alert.alert("기록 진행 중", "녹취를 중지하거나 촬영을 마친 후 이동해 주세요."); return; } setActiveTab(tab); }}
+            onSelect={navigate}
           />
           <HandwritingModal
             visible={drawingTarget !== null}
@@ -569,44 +586,6 @@ function FieldNoteApp() {
   );
 }
 
-function SettingsPage({
-  isDark,
-  onThemeChange,
-}: {
-  isDark: boolean;
-  onThemeChange: (dark: boolean) => void;
-}) {
-  return (
-    <View style={[styles.card, isDark && darkStyles.card]}>
-      <View style={styles.pageHeading}>
-        <Ionicons
-          name="settings-outline"
-          size={22}
-          color={isDark ? "#FF6972" : "#C9232D"}
-        />
-        <Text style={[styles.settingsTitle, isDark && darkStyles.primaryText]}>
-          설정
-        </Text>
-      </View>
-      <Text style={[styles.settingsLabel, isDark && darkStyles.secondaryText]}>
-        화면
-      </Text>
-      <View style={[styles.modeOption, { backgroundColor: clinicalTheme(isDark).field }]}>
-        <View style={styles.modeText}>
-          <Text style={[styles.modeTitle, isDark && darkStyles.primaryText]}>
-            다크 모드
-          </Text>
-          <Text
-            style={[styles.modeCaption, isDark && darkStyles.secondaryText]}
-          >
-            {isDark ? "켜짐" : "꺼짐"}
-          </Text>
-        </View>
-        <SquishThemeSwitch isDark={isDark} checked={isDark} onChange={onThemeChange} />
-      </View>
-    </View>
-  );
-}
 function FuturePage({ isDark }: { isDark: boolean }) {
   return (
     <View style={[styles.card, styles.futureCard, isDark && darkStyles.card]}>
@@ -631,15 +610,11 @@ function BottomNavigation({
   activeTab, isDark, onSelect, itemHeight,
 }: {
   itemHeight: number;
-  activeTab: "memo" | "mci" | "settings";
+  activeTab: AppTab;
   isDark: boolean;
-  onSelect: (tab: "memo" | "mci" | "settings") => void;
+  onSelect: (tab: AppTab) => void;
 }) {
-  const tabs = [
-    { id: "memo" as const, label: "메모", icon: "document-text-outline" as const, selectedIcon: "document-text" as const },
-    { id: "mci" as const, label: "다수사상자", icon: "people-outline" as const, selectedIcon: "people" as const },
-    { id: "settings" as const, label: "설정", icon: "settings-outline" as const, selectedIcon: "settings" as const },
-  ];
+  const tabs = NAVIGATION_ITEMS;
   // Keep the floating capsule above the home indicator / system navigation bar.
   const t = clinicalTheme(isDark);
   const insets = useSafeAreaInsets();
@@ -653,6 +628,8 @@ function BottomNavigation({
           label="하단 네비게이션"
           trackColor={backgroundColor}
           itemHeight={itemHeight}
+          itemStyle={{ paddingHorizontal: 4, paddingVertical: 4 }}
+          thumbInset={2}
           style={{ flex: 1 }}
           onSelect={id => {
             const tab = tabs.find(item => item.id === id);
@@ -662,7 +639,7 @@ function BottomNavigation({
             const tab = tabs.find(item => item.id === option.id);
             if (!tab) return null;
             return <View style={styles.floatingNavContent}>
-              <Ionicons name={active ? tab.selectedIcon : tab.icon} size={22} color={color} allowFontScaling={false} style={styles.floatingNavIcon} />
+              <Ionicons name={active ? tab.selectedIcon : tab.icon} size={20} color={color} allowFontScaling={false} style={styles.floatingNavIcon} />
               <Text numberOfLines={1} style={[styles.floatingNavText, { color }]}>{tab.label}</Text>
             </View>;
           }}
@@ -1159,9 +1136,9 @@ const styles = StyleSheet.create(
     page: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 38, gap: 16 },
     pageUnderFloatingNav: { paddingBottom: 110 },
     floatingNavLayer: { position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center", paddingBottom: 6 },
-    floatingNav: { flexDirection: "row", width: "86%", maxWidth: 380, minHeight: 72, borderRadius: 999, padding: 4, borderWidth: StyleSheet.hairlineWidth, shadowColor: "#000000", shadowOpacity: 0.25, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
-    floatingNavContent: { alignItems: "center", justifyContent: "center", gap: 3 },
-    floatingNavIcon: { width: 22, height: 22, lineHeight: 22, includeFontPadding: false, textAlign: "center" },
+    floatingNav: { flexDirection: "row", width: "86%", maxWidth: 380, minHeight: 58, borderRadius: 999, padding: 4, borderWidth: StyleSheet.hairlineWidth, shadowColor: "#000000", shadowOpacity: 0.25, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
+    floatingNavContent: { alignItems: "center", justifyContent: "center", gap: 2 },
+    floatingNavIcon: { width: 20, height: 20, lineHeight: 20, includeFontPadding: false, textAlign: "center" },
     floatingNavText: { fontSize: 11, fontFamily: "Pretendard-Medium", includeFontPadding: false, textAlign: "center" },
     card: {
       backgroundColor: clinicalTheme(false).surface,

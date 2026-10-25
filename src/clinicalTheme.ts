@@ -48,12 +48,12 @@ export function clinicalTheme(isDark: boolean) {
 
 /**
  * Dims the screen behind a popup so its content stands apart. A popover dims
- * lightly; sheets and dialogs that ask for a decision dim more. Dark pages are
+ * less than sheets and dialogs that ask for a decision. Dark pages are
  * already near black, so dark mode dims harder to keep the layers separate.
  */
 const SCRIM = {
-  popover: { light: "rgba(0,0,0,0.18)", dark: "rgba(0,0,0,0.45)" },
-  modal: { light: "rgba(0,0,0,0.4)", dark: "rgba(0,0,0,0.6)" },
+  popover: { light: "rgba(0,0,0,0.45)", dark: "rgba(0,0,0,0.65)" },
+  modal: { light: "rgba(0,0,0,0.6)", dark: "rgba(0,0,0,0.75)" },
 } as const;
 export function scrim(kind: keyof typeof SCRIM, isDark: boolean) {
   return SCRIM[kind][isDark ? "dark" : "light"];

@@ -124,7 +124,7 @@ test("every translucent popup dims what is behind it through one scrim", () => {
   const alpha = value => Number(value.match(/,\s*([\d.]+)\)$/)[1]);
   for (const dark of [false, true]) {
     assert.ok(alpha(scrim("popover", dark)) > 0 && alpha(scrim("popover", dark)) < alpha(scrim("modal", dark)));
-    assert.ok(alpha(scrim("modal", dark)) <= 0.6);
+    assert.ok(alpha(scrim("modal", dark)) >= 0.6 && alpha(scrim("modal", dark)) <= 0.75);
   }
   assert.ok(alpha(scrim("modal", true)) > alpha(scrim("modal", false)), "dark pages need a stronger scrim");
   assert.match(read("src/RecordOptionsPopover.tsx"), /scrim\("popover", p\.isDark\)/);

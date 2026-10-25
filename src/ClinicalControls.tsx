@@ -136,10 +136,12 @@ export function RecordTabs({
   trackColor,
   renderOption,
   itemHeight = m.touchHeight,
+  itemStyle,
+  thumbInset = SEGMENT_VERTICAL_INSET,
   style,
 }: {
   isDark: boolean;
-  options: RecordTabOption[];
+  options: readonly RecordTabOption[];
   selectedId: string;
   onSelect: (id: string) => void;
   disabled?: boolean;
@@ -150,6 +152,8 @@ export function RecordTabs({
   /** Shared content renderer for the press target and its clipped active copy. */
   renderOption?: RecordTabRenderer;
   itemHeight?: number;
+  itemStyle?: StyleProp<ViewStyle>;
+  thumbInset?: number;
   style?: StyleProp<ViewStyle>;
 }) {
   const [reduceMotion, setReduceMotion] = useState(true);
@@ -512,6 +516,7 @@ export function RecordTabs({
               selectionRole={selectionRole}
               width={slotWidth}
               itemHeight={itemHeight}
+              itemStyle={itemStyle}
               renderOption={renderOption}
               onLayout={(event) => measure(option.id, event)}
               onSelect={(id) => {
@@ -529,8 +534,8 @@ export function RecordTabs({
                 styles.segmentThumb,
                 {
                   left,
-                  top: (slot?.y ?? 0) + SEGMENT_VERTICAL_INSET,
-                  height: Math.max(0, activeItemHeight - SEGMENT_VERTICAL_INSET * 2),
+                  top: (slot?.y ?? 0) + thumbInset,
+                  height: Math.max(0, activeItemHeight - thumbInset * 2),
                   width: Animated.subtract(right, left),
                   backgroundColor: colors.thumbColor,
                 },
@@ -542,6 +547,7 @@ export function RecordTabs({
                   {
                     width: slotWidth * options.length + segment.inset * 2,
                     height: activeItemHeight,
+                    top: -thumbInset,
                     transform: [{ translateX: Animated.multiply(left, -1) }],
                   },
                 ]}
@@ -549,7 +555,7 @@ export function RecordTabs({
                 {options.map((option) => (
                   <View
                     key={option.id}
-                    style={[styles.segmentCopy, { width: slotWidth, minHeight: activeItemHeight, height: activeItemHeight }]}
+                    style={[styles.segmentCopy, itemStyle, { width: slotWidth, minHeight: activeItemHeight, height: activeItemHeight }]}
                   >
                     {renderOption ? renderOption(option, colors.activeTextColor, true) : <Text
                       numberOfLines={1}
@@ -585,6 +591,7 @@ function RecordTab({
   selectionRole,
   width,
   itemHeight,
+  itemStyle,
   renderOption,
 }: {
   option: RecordTabOption;
@@ -597,6 +604,7 @@ function RecordTab({
   selectionRole: "tab" | "radio";
   width: number;
   itemHeight: number;
+  itemStyle?: StyleProp<ViewStyle>;
   renderOption?: RecordTabRenderer;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -639,7 +647,7 @@ function RecordTab({
         { width, opacity: disabled ? 0.5 : pressed ? 0.75 : 1 },
       ]}
     >
-      <Animated.View style={[styles.tab, { minHeight: itemHeight, transform: [{ scale }] }]}>
+      <Animated.View style={[styles.tab, itemStyle, { minHeight: itemHeight, transform: [{ scale }] }]}>
         {renderOption ? renderOption(option, rubberSegmentColors(isDark).textColor, false) : <Text
           numberOfLines={1}
           style={[
@@ -691,7 +699,6 @@ const styles = StyleSheet.create({
   },
   segmentCopies: {
     position: "absolute",
-    top: -SEGMENT_VERTICAL_INSET,
     flexDirection: "row",
     paddingHorizontal: segment.inset,
   },
