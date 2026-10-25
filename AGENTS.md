@@ -1,4 +1,4 @@
-# AGENTS.md — 119 | FIELD 24 (EMS Log)
+# AGENTS.md — 119 | FIELD NOTE (EMS Log)
 
 이 파일은 Codex와 Claude Code가 함께 따르는 공용 규칙입니다. `CLAUDE.md`는 이 파일을 불러옵니다.
 
@@ -64,9 +64,9 @@ Codex 실행 권한:
 
 ## Android 릴리스 절차
 
-사용자는 GJ FIRE 홈페이지(`../gjfire-tools`, Cloudflare Pages `cyber-education-checklist`)의 EMS Log 카드에서 APK를 받는다. 다운로드 버튼은 이 저장소(`jangseong85/ems-log-downloads`)의 GitHub Releases 파일을 직접 가리킨다. 흐름은 다음과 같다.
+사용자는 GJ FIRE 홈페이지(`../gjfire-tools`, Cloudflare Pages `cyber-education-checklist`)의 EMS Log 카드에서 APK를 받는다. 다운로드 버튼은 이 저장소(`jangseong85/field-note-downloads`)의 GitHub Releases 파일을 직접 가리킨다. 흐름은 다음과 같다.
 
-EMSLog에서 빌드 → gjfire-tools에서 서명 → 실기기 확인 → ems-log-downloads Releases 게시 → gjfire-tools 홈페이지 정보 갱신·배포
+EMSLog에서 빌드 → gjfire-tools에서 서명 → 실기기 확인 → field-note-downloads Releases 게시 → gjfire-tools 홈페이지 정보 갱신·배포
 
 서명 키 보관과 원칙은 `../gjfire-tools/ANDROID_SIGNING.md`가 기준이다. 버전 변경, 커밋, push, Releases 게시, 홈페이지 배포는 각각 사용자 승인 대상이다.
 
@@ -120,7 +120,7 @@ adb shell dumpsys package com.emslog.mobile | grep -E "versionName|firstInstallT
 gh release create v<버전> \
   ../gjfire-tools/output/android-apps/ems-log-<버전>.apk \
   ../gjfire-tools/output/android-apps/ems-log-SHA256SUMS.txt \
-  --repo jangseong85/ems-log-downloads \
+  --repo jangseong85/field-note-downloads \
   --title "119 구급대원 메모장 v<버전>" \
   --notes-file docs/RELEASE_<버전>.md
 ```
