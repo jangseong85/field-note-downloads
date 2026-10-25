@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* react-bits/ is gitignored (Pro license), and Tailwind skips gitignored paths by default. */
+@source "./components/react-bits";
 @font-face {
   font-family: "Field Barlow";
   src: url("/field-barlow-bold.woff2") format("woff2");
