@@ -121,6 +121,9 @@ export function ClinicalInput({
     />
   );
 }
+type RecordTabOption = { id: string; label: string };
+type RecordTabRenderer = (option: RecordTabOption, color: string, active: boolean) => React.ReactNode;
+
 export function RecordTabs({
   isDark,
   options,
@@ -130,9 +133,12 @@ export function RecordTabs({
   label,
   selectionRole = "tab",
   trackColor,
+  renderOption,
+  itemHeight = m.touchHeight,
+  style,
 }: {
   isDark: boolean;
-  options: { id: string; label: string }[];
+  options: RecordTabOption[];
   selectedId: string;
   onSelect: (id: string) => void;
   disabled?: boolean;
@@ -140,6 +146,10 @@ export function RecordTabs({
   selectionRole?: "tab" | "radio";
   /** Track colour when the default would vanish into the surface it sits on. */
   trackColor?: string;
+  /** Shared content renderer for the press target and its clipped active copy. */
+  renderOption?: RecordTabRenderer;
+  itemHeight?: number;
+  style?: StyleProp<ViewStyle>;
 }) {
   const [reduceMotion, setReduceMotion] = useState(true);
   const colors = { ...rubberSegmentColors(isDark), ...(trackColor ? { trackColor } : {}) };
@@ -459,7 +469,7 @@ export function RecordTabs({
         })
       }
       // The capsule clips overflowing tabs, so a scrolled rail keeps rounded ends instead of a square cut.
-      style={[styles.tabTrack, { backgroundColor: colors.trackColor, borderRadius: SEGMENT_RADIUS, overflow: "hidden" }]}
+      style={[styles.tabTrack, { backgroundColor: colors.trackColor, borderRadius: SEGMENT_RADIUS, overflow: "hidden" }, style]}
     >
       <ScrollView
         ref={scroll}
@@ -499,6 +509,8 @@ export function RecordTabs({
               isDark={isDark}
               selectionRole={selectionRole}
               width={slotWidth}
+              itemHeight={itemHeight}
+              renderOption={renderOption}
               onLayout={(event) => measure(option.id, event)}
               onSelect={(id) => {
                 if (!disabled && !dragged.current) onSelect(id);
@@ -532,9 +544,9 @@ export function RecordTabs({
                 {options.map((option) => (
                   <View
                     key={option.id}
-                    style={[styles.segmentCopy, { width: slotWidth }]}
+                    style={[styles.segmentCopy, { width: slotWidth, minHeight: itemHeight }]}
                   >
-                    <Text
+                    {renderOption ? renderOption(option, colors.activeTextColor, true) : <Text
                       numberOfLines={1}
                       style={[
                         styles.tabText,
@@ -545,7 +557,7 @@ export function RecordTabs({
                       ]}
                     >
                       {option.label}
-                    </Text>
+                    </Text>}
                   </View>
                 ))}
               </Animated.View>
@@ -567,8 +579,10 @@ function RecordTab({
   onLayout,
   selectionRole,
   width,
+  itemHeight,
+  renderOption,
 }: {
-  option: { id: string; label: string };
+  option: RecordTabOption;
   selected: boolean;
   disabled: boolean;
   reduceMotion: boolean;
@@ -577,6 +591,8 @@ function RecordTab({
   onLayout: (event: LayoutChangeEvent) => void;
   selectionRole: "tab" | "radio";
   width: number;
+  itemHeight: number;
+  renderOption?: RecordTabRenderer;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -618,8 +634,8 @@ function RecordTab({
         { width, opacity: disabled ? 0.5 : pressed ? 0.75 : 1 },
       ]}
     >
-      <Animated.View style={[styles.tab, { transform: [{ scale }] }]}>
-        <Text
+      <Animated.View style={[styles.tab, { minHeight: itemHeight, transform: [{ scale }] }]}>
+        {renderOption ? renderOption(option, rubberSegmentColors(isDark).textColor, false) : <Text
           numberOfLines={1}
           style={[
             styles.tabText,
@@ -630,7 +646,7 @@ function RecordTab({
           ]}
         >
           {option.label}
-        </Text>
+        </Text>}
       </Animated.View>
     </Pressable>
   );

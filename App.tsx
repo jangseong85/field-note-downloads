@@ -630,24 +630,37 @@ function BottomNavigation({
   onSelect: (tab: "memo" | "mci" | "settings") => void;
 }) {
   const tabs = [
-    { key: "memo" as const, label: "메모", icon: "document-text-outline" as const, selectedIcon: "document-text" as const },
-    { key: "mci" as const, label: "다수사상자", icon: "people-outline" as const, selectedIcon: "people" as const },
-    { key: "settings" as const, label: "설정", icon: "settings-outline" as const, selectedIcon: "settings" as const },
+    { id: "memo" as const, label: "메모", icon: "document-text-outline" as const, selectedIcon: "document-text" as const },
+    { id: "mci" as const, label: "다수사상자", icon: "people-outline" as const, selectedIcon: "people" as const },
+    { id: "settings" as const, label: "설정", icon: "settings-outline" as const, selectedIcon: "settings" as const },
   ];
-  // A capsule tab bar floating above the content, which scrolls underneath it (both platforms).
-  // Absolute children ignore the SafeAreaView padding, so lift it above the home indicator / system nav bar.
+  // Keep the floating capsule above the home indicator / system navigation bar.
   const t = clinicalTheme(isDark);
   const insets = useSafeAreaInsets();
+  const backgroundColor = isDark ? "rgba(44,45,50,0.96)" : "rgba(250,249,247,0.97)";
   return <View pointerEvents="box-none" style={[styles.floatingNavLayer, { paddingBottom: insets.bottom + 8 }]}>
-      <View accessibilityRole="tablist" style={[styles.floatingNav, { backgroundColor: isDark ? "rgba(44,45,50,0.96)" : "rgba(250,249,247,0.97)", borderColor: t.border }]}>
-        {tabs.map((tab) => {
-          const selected = tab.key === activeTab;
-          const color = selected ? t.accent : t.ink;
-          return <Pressable key={tab.key} accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={tab.label} onPress={() => onSelect(tab.key)} style={[styles.floatingNavItem, selected && { backgroundColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.06)" }]}>
-            <Ionicons name={selected ? tab.selectedIcon : tab.icon} size={22} color={color} />
-            <Text style={[styles.floatingNavText, { color }]}>{tab.label}</Text>
-          </Pressable>;
-        })}
+      <View accessibilityRole="tablist" style={[styles.floatingNav, { backgroundColor, borderColor: t.border }]}>
+        <RecordTabs
+          isDark={isDark}
+          options={tabs}
+          selectedId={activeTab}
+          label="하단 네비게이션"
+          trackColor={backgroundColor}
+          itemHeight={56}
+          style={{ flex: 1 }}
+          onSelect={id => {
+            const tab = tabs.find(item => item.id === id);
+            if (tab) onSelect(tab.id);
+          }}
+          renderOption={(option, color, active) => {
+            const tab = tabs.find(item => item.id === option.id);
+            if (!tab) return null;
+            return <View style={styles.floatingNavContent}>
+              <Ionicons name={active ? tab.selectedIcon : tab.icon} size={22} color={color} />
+              <Text numberOfLines={1} style={[styles.floatingNavText, { color }]}>{tab.label}</Text>
+            </View>;
+          }}
+        />
       </View>
     </View>;
 }
@@ -1141,7 +1154,7 @@ const styles = StyleSheet.create(
     pageUnderFloatingNav: { paddingBottom: 110 },
     floatingNavLayer: { position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center", paddingBottom: 6 },
     floatingNav: { flexDirection: "row", width: "86%", maxWidth: 380, height: 64, borderRadius: 32, padding: 4, borderWidth: StyleSheet.hairlineWidth, shadowColor: "#000000", shadowOpacity: 0.25, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
-    floatingNavItem: { flex: 1, borderRadius: 28, alignItems: "center", justifyContent: "center", gap: 2 },
+    floatingNavContent: { alignItems: "center", justifyContent: "center", gap: 2 },
     floatingNavText: { fontSize: 11, fontFamily: "Pretendard-Medium" },
     card: {
       backgroundColor: clinicalTheme(false).surface,

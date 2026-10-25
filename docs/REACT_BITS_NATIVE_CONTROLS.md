@@ -59,3 +59,12 @@ Implemented safeguards:
 - Latest release APK: `releases/FieldNote-1.0.3-WheelMomentum.apk`.
 - Latest isolated emulator checks: three-patient and three-measurement selection, drag without selection, gender, birth-date/age alignment, separate media surface, cancel and all-patient reset using synthetic test records only. No real patient records were reset.
 - No physical-phone installation performed in this change.
+
+
+## 하단 네비게이션 Rubber Segment — 2026-10-25
+
+메모·다수사상자·설정 네비게이션에 환자·측정 탭과 같은 `RecordTabs`의 Rubber Segment를 적용했다.
+아이콘과 글자 렌더러를 공통 탭에 추가해 선택 배경이 늘어나는 구간에서도 활성 색상으로 표시한다.
+캡슐 크기, 하단 안전 영역, 아이콘과 메뉴명, 녹취·촬영 중 화면 이동 방지는 유지한다.
+탭과 드래그 확정, 취소 복원, 동작 줄이기 설정은 기존 공통 구현을 사용한다.
+CSS를 WebView에 넣는 대신 React Native `Animated`로 기존 효과를 재사용한다.
