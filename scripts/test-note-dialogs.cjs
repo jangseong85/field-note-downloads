@@ -321,3 +321,29 @@ test("Squish toggles follow the surface: light mode never shows a white 'on' tra
     for (const tag of tags) assert.match(tag, /isDark=\{/, `${file}: ${tag.slice(0, 60)}`);
   }
 });
+
+test("segment active copy aligns with the actual tab bounds when icon content grows taller", () => {
+  const h = harness("src/ClinicalControls.tsx");
+  const props = {isDark:true, options:[{id:"memo",label:"메모"},{id:"settings",label:"설정"}], selectedId:"settings", onSelect() {}, label:"하단 네비게이션", itemHeight:64, renderOption:(_option,color)=>({type:"IconLabel",props:{color}})};
+  let root=h.render(h.exports.RecordTabs,props);
+  find(root,"ScrollView")[0].props.onLayout({nativeEvent:{layout:{width:300}}});
+  function tabs(node) {
+    if(!node || typeof node!=="object") return [];
+    if(Array.isArray(node)) return node.flatMap(tabs);
+    return [...(node.type?.name==="RecordTab" ? [node] : []),...tabs(node.props?.children)];
+  }
+  tabs(root).forEach((node,i)=>node.props.onLayout({nativeEvent:{layout:{x:3+i*147,y:2,width:147,height:72}}}));
+  root=h.render(h.exports.RecordTabs,props);
+  const thumb=find(root,"AnimatedView").find(node=>node.props.importantForAccessibility==="no-hide-descendants");
+  const flatten=value=>Object.assign({},...value.flat(Infinity).filter(Boolean));
+  const thumbStyle=flatten(thumb.props.style);
+  assert.equal(thumbStyle.top,6,"thumb starts 4px inside the measured tab, including its row offset");
+  assert.equal(thumbStyle.height,64,"thumb leaves symmetric 4px insets inside the actual 72px row");
+  const copies=find(thumb,"AnimatedView")[1];
+  const copyStyle=flatten(copies.props.style);
+  assert.equal(thumbStyle.top+copyStyle.top,2,"active content starts at the same y as the real tab");
+  assert.equal(copyStyle.height,72);
+  const labels=find(copies,"View").filter(node=>Array.isArray(node.props.style));
+  assert.equal(labels.length,2);
+  labels.forEach(node=>assert.equal(flatten(node.props.style).height,72,"both layers center their content inside the same actual row height"));
+});

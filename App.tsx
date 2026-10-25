@@ -38,6 +38,7 @@ import {
   StyleSheet,
   Text,
   useColorScheme,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { migrateStoredForm, patientFileUris, type FormState } from "./src/patientWorkspace";
@@ -109,6 +110,9 @@ function FieldNoteApp() {
     "Pretendard-Bold": require("pretendard/dist/public/static/Pretendard-Bold.otf"),
   });
   const systemColorScheme = useColorScheme();
+  const { fontScale } = useWindowDimensions();
+  // 22px icon + 3px gap + scaled 17px caption line + the segment's 9px padding on each side.
+  const navigationItemHeight = Math.max(64, Math.ceil(22 + 3 + 17 * fontScale + 18));
   const { store, status: recoveryStatus, busy: deletingPatient, form, patients, activePatientId, setForm, commitPatientUpdate } = usePatientWorkspace(() => Alert.alert("저장 안내", "입력 내용의 임시 저장에 실패했습니다. 저장 공간을 확인해 주세요."));
   const loaded = recoveryStatus !== "loading";
   const cleanupFiles = usePatientFileCleanup(uri => patientFileUris(store.getSnapshot().workspace).includes(uri));
@@ -385,7 +389,7 @@ function FieldNoteApp() {
             <ScrollView
               ref={scrollRef}
               style={styles.flex}
-              contentContainerStyle={[styles.page, styles.pageUnderFloatingNav]}
+              contentContainerStyle={[styles.page, styles.pageUnderFloatingNav, { paddingBottom: navigationItemHeight + 46 }]}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
             >
@@ -422,6 +426,7 @@ function FieldNoteApp() {
             </ScrollView>
           </KeyboardAvoidingView>
           <BottomNavigation
+            itemHeight={navigationItemHeight}
             activeTab={activeTab}
             isDark={isDark}
             onSelect={tab => { if (mediaBusy) { Alert.alert("기록 진행 중", "녹취를 중지하거나 촬영을 마친 후 이동해 주세요."); return; } setActiveTab(tab); }}
@@ -623,8 +628,9 @@ function FuturePage({ isDark }: { isDark: boolean }) {
   );
 }
 function BottomNavigation({
-  activeTab, isDark, onSelect,
+  activeTab, isDark, onSelect, itemHeight,
 }: {
+  itemHeight: number;
   activeTab: "memo" | "mci" | "settings";
   isDark: boolean;
   onSelect: (tab: "memo" | "mci" | "settings") => void;
@@ -639,14 +645,14 @@ function BottomNavigation({
   const insets = useSafeAreaInsets();
   const backgroundColor = isDark ? "rgba(44,45,50,0.96)" : "rgba(250,249,247,0.97)";
   return <View pointerEvents="box-none" style={[styles.floatingNavLayer, { paddingBottom: insets.bottom + 8 }]}>
-      <View accessibilityRole="tablist" style={[styles.floatingNav, { backgroundColor, borderColor: t.border }]}>
+      <View accessibilityRole="tablist" style={[styles.floatingNav, { backgroundColor, borderColor: t.border, height: itemHeight + 8 + StyleSheet.hairlineWidth * 2 }]}>
         <RecordTabs
           isDark={isDark}
           options={tabs}
           selectedId={activeTab}
           label="하단 네비게이션"
           trackColor={backgroundColor}
-          itemHeight={56}
+          itemHeight={itemHeight}
           style={{ flex: 1 }}
           onSelect={id => {
             const tab = tabs.find(item => item.id === id);
@@ -656,7 +662,7 @@ function BottomNavigation({
             const tab = tabs.find(item => item.id === option.id);
             if (!tab) return null;
             return <View style={styles.floatingNavContent}>
-              <Ionicons name={active ? tab.selectedIcon : tab.icon} size={22} color={color} />
+              <Ionicons name={active ? tab.selectedIcon : tab.icon} size={22} color={color} allowFontScaling={false} style={styles.floatingNavIcon} />
               <Text numberOfLines={1} style={[styles.floatingNavText, { color }]}>{tab.label}</Text>
             </View>;
           }}
@@ -1153,9 +1159,10 @@ const styles = StyleSheet.create(
     page: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 38, gap: 16 },
     pageUnderFloatingNav: { paddingBottom: 110 },
     floatingNavLayer: { position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center", paddingBottom: 6 },
-    floatingNav: { flexDirection: "row", width: "86%", maxWidth: 380, height: 64, borderRadius: 32, padding: 4, borderWidth: StyleSheet.hairlineWidth, shadowColor: "#000000", shadowOpacity: 0.25, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
-    floatingNavContent: { alignItems: "center", justifyContent: "center", gap: 2 },
-    floatingNavText: { fontSize: 11, fontFamily: "Pretendard-Medium" },
+    floatingNav: { flexDirection: "row", width: "86%", maxWidth: 380, minHeight: 72, borderRadius: 999, padding: 4, borderWidth: StyleSheet.hairlineWidth, shadowColor: "#000000", shadowOpacity: 0.25, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
+    floatingNavContent: { alignItems: "center", justifyContent: "center", gap: 3 },
+    floatingNavIcon: { width: 22, height: 22, lineHeight: 22, includeFontPadding: false, textAlign: "center" },
+    floatingNavText: { fontSize: 11, fontFamily: "Pretendard-Medium", includeFontPadding: false, textAlign: "center" },
     card: {
       backgroundColor: clinicalTheme(false).surface,
       borderRadius: 14,

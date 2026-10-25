@@ -36,6 +36,7 @@ const segment = RUBBER_SEGMENT_CONFIG;
 // Capsule segments on both platforms (2026-10-23 design); the Rubber Segment motion is unchanged.
 const SEGMENT_RADIUS = 999;
 const SEGMENT_INNER_RADIUS = 999;
+const SEGMENT_VERTICAL_INSET = 4;
 export const rubberSegmentColors = (isDark: boolean) =>
   isDark
     ? {
@@ -154,7 +155,7 @@ export function RecordTabs({
   const [reduceMotion, setReduceMotion] = useState(true);
   const colors = { ...rubberSegmentColors(isDark), ...(trackColor ? { trackColor } : {}) };
   const [slots, setSlots] = useState<
-    Record<string, { x: number; width: number }>
+    Record<string, { x: number; y: number; width: number; height: number }>
   >({});
   const [viewportWidth, setViewportWidth] = useState(0);
   const slotWidth = Math.max(
@@ -174,6 +175,7 @@ export function RecordTabs({
   const slot = options.some((option) => option.id === selectedId)
     ? slots[selectedId]
     : undefined;
+  const activeItemHeight = slot?.height ?? itemHeight;
   const latest = useRef({
     options,
     slots,
@@ -451,11 +453,11 @@ export function RecordTabs({
       });
   }, [selectedId, slot, viewportWidth, reduceMotion]);
   function measure(id: string, event: LayoutChangeEvent) {
-    const { x, width } = event.nativeEvent.layout;
+    const { x, y = 0, width, height = itemHeight } = event.nativeEvent.layout;
     setSlots((previous) =>
-      previous[id]?.x === x && previous[id]?.width === width
+      previous[id]?.x === x && previous[id]?.y === y && previous[id]?.width === width && previous[id]?.height === height
         ? previous
-        : { ...previous, [id]: { x, width } },
+        : { ...previous, [id]: { x, y, width, height } },
     );
   }
   return (
@@ -527,6 +529,8 @@ export function RecordTabs({
                 styles.segmentThumb,
                 {
                   left,
+                  top: (slot?.y ?? 0) + SEGMENT_VERTICAL_INSET,
+                  height: Math.max(0, activeItemHeight - SEGMENT_VERTICAL_INSET * 2),
                   width: Animated.subtract(right, left),
                   backgroundColor: colors.thumbColor,
                 },
@@ -537,6 +541,7 @@ export function RecordTabs({
                   styles.segmentCopies,
                   {
                     width: slotWidth * options.length + segment.inset * 2,
+                    height: activeItemHeight,
                     transform: [{ translateX: Animated.multiply(left, -1) }],
                   },
                 ]}
@@ -544,7 +549,7 @@ export function RecordTabs({
                 {options.map((option) => (
                   <View
                     key={option.id}
-                    style={[styles.segmentCopy, { width: slotWidth, minHeight: itemHeight }]}
+                    style={[styles.segmentCopy, { width: slotWidth, minHeight: activeItemHeight, height: activeItemHeight }]}
                   >
                     {renderOption ? renderOption(option, colors.activeTextColor, true) : <Text
                       numberOfLines={1}
@@ -681,14 +686,12 @@ const styles = StyleSheet.create({
   },
   segmentThumb: {
     position: "absolute",
-    top: 4,
-    bottom: 4,
     borderRadius: SEGMENT_INNER_RADIUS,
     overflow: "hidden",
   },
   segmentCopies: {
     position: "absolute",
-    top: -4,
+    top: -SEGMENT_VERTICAL_INSET,
     flexDirection: "row",
     paddingHorizontal: segment.inset,
   },
