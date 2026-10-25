@@ -417,7 +417,7 @@ function FieldNoteApp() {
     introFinishing.current = true;
     Animated.timing(introOpacity, {
       toValue: 0,
-      duration: 360,
+      duration: 250,
       easing: Easing.inOut(Easing.quad),
       useNativeDriver: true,
     }).start(({ finished }) => finished && setShowIntro(false));
@@ -426,7 +426,7 @@ function FieldNoteApp() {
   useEffect(() => {
     if (!loaded) return;
     void SplashScreen.hideAsync();
-    const fallback = setTimeout(finishIntro, 5700);
+    const fallback = setTimeout(finishIntro, 3500);
     return () => clearTimeout(fallback);
   }, [finishIntro, loaded]);
 

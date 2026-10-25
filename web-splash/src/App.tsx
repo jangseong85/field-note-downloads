@@ -27,7 +27,7 @@ export default function App() {
           colors={["#ff003a", "#e9002e"]}
           backgroundColor="transparent"
           direction="down" expandFrom="center" easing="out" trigger="mount"
-          revealDuration={2300} revealDelay={300} thickness={2}
+          revealDuration={1150} revealDelay={100} thickness={2}
           glow={0.62} spill={0.14} reach={0.58} intensity={0.884}
           feather={0.32} inset={tubeInset} length={tubeLength}
           hum={0.78} flicker={0.9} interactive={false} intro

@@ -33,7 +33,7 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; back
 }
 .splash-content {
   position: relative; width: 100%; height: 100%;
-  animation: scene-in 800ms ease-out 200ms both;
+  animation: scene-in 600ms ease-out 100ms both;
 }
 .scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
 .splash-content::after {
@@ -54,7 +54,7 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; back
   text-align: center; color: #e7e8e9;
   font-family: "Field Barlow", Arial, sans-serif;
   font-size: clamp(32px, 9.6cqw, 48px); font-weight: 700; line-height: 1.15; letter-spacing: 0.035em;
-  animation: scene-in 850ms ease-out 800ms both;
+  animation: scene-in 600ms ease-out 450ms both;
 }
 .brand-type { margin: 0; font: inherit; letter-spacing: inherit; white-space: nowrap; }
 @keyframes scene-in { from { opacity: 0; } to { opacity: 1; } }
