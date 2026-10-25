@@ -19,7 +19,7 @@ function harness() {
       if (ref === "react-native-safe-area-context") return { SafeAreaView: "SafeAreaView" };
       if (ref === "./ClinicalControls") return { RecordTabs: "Tabs" };
       if (ref === "./NativeWheelColumn") return { __esModule: true, default: "Column" };
-      if (ref === "./clinicalTheme") return { clinicalTheme: () => ({}) };
+      if (ref === "./clinicalTheme") return { clinicalTheme: () => ({}), scrim: () => "rgba(0,0,0,0.4)" };
       if (ref === "./NoteDialogs") return { NoteModal: "Modal" };
       return load(ref.replace("./", ""));
     }, m, m.exports);

@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ClinicalInput } from "./ClinicalControls";
 import { NoteModal } from "./NoteDialogs";
-import { clinicalTheme } from "./clinicalTheme";
+import { clinicalTheme, scrim } from "./clinicalTheme";
 import { formatPhoneNumber } from "./phoneNumber";
 import { terms } from "./terms";
 
@@ -89,7 +89,7 @@ export default function PatientContacts({
         />
       </View>
       <NoteModal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={sheet.backdrop}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[sheet.backdrop, { backgroundColor: scrim("modal", isDark) }]}>
           <Pressable accessibilityLabel="보호자 정보 취소" style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
           <SafeAreaView edges={["bottom"]} style={[sheet.body, { backgroundColor: t.surface }]}>
             <View style={[sheet.grabber, { backgroundColor: t.border }]} />
@@ -165,7 +165,7 @@ export default function PatientContacts({
   );
 }
 const sheet = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
+  backdrop: { flex: 1, justifyContent: "flex-end" },
   body: { borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 16, paddingBottom: 16 },
   grabber: { width: 36, height: 5, borderRadius: 3, alignSelf: "center", marginTop: 8 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8 },

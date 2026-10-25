@@ -6,7 +6,7 @@ const test = require("node:test");
 const read = name => fs.readFileSync(path.join(__dirname, "..", name), "utf8");
 const moduleResult = { exports: {} };
 new Function("module", "exports", ts.transpileModule(read("src/clinicalTheme.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(moduleResult, moduleResult.exports);
-const { clinicalTheme, clinicalMetrics } = moduleResult.exports;
+const { clinicalTheme, clinicalMetrics, scrim } = moduleResult.exports;
 const luminance = hex => {
   const c = hex.slice(1).match(/../g).map(value => parseInt(value, 16) / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
   return c[0] * .2126 + c[1] * .7152 + c[2] * .0722;
@@ -119,4 +119,18 @@ test("the old memo screen was replaced rather than hidden below the new one", ()
   assert.match(app, /<PatientNoteScreen\b/);
   assert.doesNotMatch(app, /function AdvancedPatient\(|function MemoCard\(|<MemoCard\b/);
   assert.match(read("src/PatientNoteScreen.tsx"), /onUpdate\("historyMemo", value\)/);
+});
+test("every translucent popup dims what is behind it through one scrim", () => {
+  const alpha = value => Number(value.match(/,\s*([\d.]+)\)$/)[1]);
+  for (const dark of [false, true]) {
+    assert.ok(alpha(scrim("popover", dark)) > 0 && alpha(scrim("popover", dark)) < alpha(scrim("modal", dark)));
+    assert.ok(alpha(scrim("modal", dark)) <= 0.6);
+  }
+  assert.ok(alpha(scrim("modal", true)) > alpha(scrim("modal", false)), "dark pages need a stronger scrim");
+  assert.match(read("src/RecordOptionsPopover.tsx"), /scrim\("popover", p\.isDark\)/);
+  for (const file of ["src/HistorySheet.tsx", "src/PatientContacts.tsx", "src/SendPhotosSheet.tsx", "src/DateTimeWheelPicker.tsx", "src/NoteDialogs.tsx"]) {
+    const source = read(file);
+    assert.match(source, /scrim\("modal", (p\.)?isDark\)/, file);
+    assert.doesNotMatch(source, /rgba\(0,\s*0,\s*0,\s*\.?0?\.4/, file);
+  }
 });

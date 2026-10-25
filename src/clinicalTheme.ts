@@ -46,6 +46,19 @@ export function clinicalTheme(isDark: boolean) {
   return isDark ? dark : light;
 }
 
+/**
+ * Dims the screen behind a popup so its content stands apart. A popover dims
+ * lightly; sheets and dialogs that ask for a decision dim more. Dark pages are
+ * already near black, so dark mode dims harder to keep the layers separate.
+ */
+const SCRIM = {
+  popover: { light: "rgba(0,0,0,0.18)", dark: "rgba(0,0,0,0.45)" },
+  modal: { light: "rgba(0,0,0,0.4)", dark: "rgba(0,0,0,0.6)" },
+} as const;
+export function scrim(kind: keyof typeof SCRIM, isDark: boolean) {
+  return SCRIM[kind][isDark ? "dark" : "light"];
+}
+
 /** Pastel tint per vital sign, only to tell the tiles apart at a glance. It never signals an abnormal value. */
 const VITAL_TINTS = {
   light: {

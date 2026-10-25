@@ -41,7 +41,7 @@ function harness(file, { os = "android" } = {}) {
     if (name === "react") return React;
     if (name === "react-native") return rn;
     if (name === "@expo/vector-icons") return { Ionicons: "Icon" };
-    if (name === "./clinicalTheme") return { clinicalTheme: () => ({}), clinicalMetrics: { fieldHeight: 52, radius: 14, fontSize: 16, padding: 12, touchHeight: 44 } };
+    if (name === "./clinicalTheme") return { clinicalTheme: () => ({}), scrim: () => "rgba(0,0,0,0.4)", clinicalMetrics: { fieldHeight: 52, radius: 14, fontSize: 16, padding: 12, touchHeight: 44 } };
     if (name === "./NoteDialogs" && file !== "src/NoteDialogs.tsx") return { NoteModal: "Modal" };
     if (name === "./RecordAffiliation") return { __esModule: true, default: "Affiliation" };
     if (name === "./SquishThemeSwitch") return { __esModule: true, default: "Switch" };

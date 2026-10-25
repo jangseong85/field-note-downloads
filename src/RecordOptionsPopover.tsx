@@ -10,7 +10,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { clinicalTheme } from "./clinicalTheme";
+import { clinicalTheme, scrim } from "./clinicalTheme";
 import { NoteModal } from "./NoteDialogs";
 import RecordAffiliation from "./RecordAffiliation";
 import SquishThemeSwitch from "./SquishThemeSwitch";
@@ -80,7 +80,7 @@ export default function RecordOptionsPopover(p: Props) {
 
   return (
     <NoteModal visible={p.visible} transparent animationType="fade" onRequestClose={p.onClose}>
-      <Pressable accessibilityLabel="기록 옵션 닫기" style={StyleSheet.absoluteFill} onPress={p.onClose} />
+      <Pressable accessibilityLabel="기록 옵션 닫기" style={[StyleSheet.absoluteFill, { backgroundColor: scrim("popover", p.isDark) }]} onPress={p.onClose} />
       <Animated.View
         accessibilityViewIsModal
         style={[

@@ -22,7 +22,7 @@ function harness() {
     if (name === "react-native-safe-area-context") return { SafeAreaView: "SafeArea" };
     if (name === "./ClinicalControls") return { ClinicalInput: "Input" };
     if (name === "./NoteDialogs") return { NoteModal: "Dialog" };
-    if (name === "./clinicalTheme") return { clinicalTheme: () => ({}) };
+    if (name === "./clinicalTheme") return { clinicalTheme: () => ({}), scrim: () => "rgba(0,0,0,0.4)" };
     if (name === "./phoneNumber") return phoneModule.exports;
     if (name === "./terms") { const m = { exports: {} }; new Function("module", "exports", ts.transpileModule(read("src/terms.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(m, m.exports); return m.exports; }
     throw Error(name);

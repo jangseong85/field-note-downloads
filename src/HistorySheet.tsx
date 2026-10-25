@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { clinicalTheme } from "./clinicalTheme";
+import { clinicalTheme, scrim } from "./clinicalTheme";
 import { HISTORY_GROUPS, toggleHistoryItem } from "./historyOptions";
 import { NoteModal } from "./NoteDialogs";
 
@@ -32,7 +32,7 @@ export default function HistorySheet(p: Props) {
       animationType="slide"
       onRequestClose={p.onCancel}
     >
-      <View style={s.backdrop}>
+      <View style={[s.backdrop, { backgroundColor: scrim("modal", p.isDark) }]}>
         <Pressable
           accessibilityLabel="병력 선택 취소"
           style={StyleSheet.absoluteFill}
@@ -126,7 +126,6 @@ const s = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.4)",
   },
   sheet: {
     maxHeight: "88%",

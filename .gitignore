@@ -24,3 +24,4 @@ web-splash/dist/
 web-splash/dist-dock/
 assets/web/splash/
 *.log
+.codex-tmp/

@@ -26,14 +26,16 @@ ML Kit 등 네이티브 모듈이 있어 Expo Go로는 실행되지 않습니다
 
 | 역할 | 담당 | 하는 일 |
 |---|---|---|
-| 설계·구현 | Claude Code | 요구사항 정리, 설계 문서(`docs/`), 구조 변경, 구현, 검증 명령 실행 |
+| 설계·디자인·구현 | Claude Code | 요구사항 정리, 디자인 시안, 설계 문서(`docs/`), 구조 변경, 구현. 반복·운영 작업은 Codex에 넘겨 세션 한도를 아낀다 |
 | 디버깅·린트 | Codex | 버그 원인 분석, 검증 명령(tsc·lint·테스트) 실패 원인 추적, 린트·타입 오류 정리 |
+| 커밋·실기기 설치 | Codex | 사용자가 승인한 변경의 커밋, Android 빌드 → 서명 → 폰 덮어 설치 (2026-10-25부터) |
 
 작업 흐름:
 
 1. Claude가 설계안을 `docs/`에 작성하고 사용자 승인을 받는다.
 2. Claude가 구현하고 검증 명령을 통과시킨다.
-3. 사용자에게 요약을 보고하고, 승인 후 커밋한다.
+3. 사용자에게 요약을 보고한다.
+4. 사용자가 커밋·설치를 승인하면 Claude가 범위(커밋할 파일, 메시지, 설치할 빌드)를 정해 Codex에 맡기고, Codex의 결과(커밋 해시, 서명 검증, `firstInstallTime` 유지)를 직접 확인해 보고한다.
 
 Codex를 부르는 경우 (매 작업마다 부르지 않는다):
 
@@ -60,6 +62,12 @@ Codex 실행 권한:
 - 디버깅·린트 분석: `codex exec --sandbox read-only "<증상·재현 방법·관련 파일>"` — 원인 분석만, 파일 수정 금지
 - 리뷰 (사용자 요청 시): `codex review --uncommitted` (읽기 전용). `--uncommitted`·`--base`·`--commit`에는 직접 쓴 지시문을 함께 넘길 수 없으므로, 리뷰 기준은 이 파일로 전달한다
 - 직접 수정: `--sandbox workspace-write`는 사용자가 허락한 경우에만, 그리고 아래 워크트리 안에서만 (`codex exec -C <워크트리 경로> --sandbox workspace-write ...`)
+- 커밋·실기기 설치 (사용자 승인 후): `codex exec -m gpt-6.1-sol -C /Users/jangseong/coding --skip-git-repo-check --sandbox workspace-write -c sandbox_workspace_write.network_access=true -c 'sandbox_workspace_write.writable_roots=["/Users/jangseong/.gradle"]' "<커밋할 파일·메시지 또는 설치 지시>" < /dev/null`
+  - `< /dev/null`을 붙인다. 백그라운드 실행에서 stdin이 열려 있으면 Codex가 추가 입력을 기다리며 멈춘다
+  - EMSLog·gjfire-tools가 모두 쓰기 범위에 들어가도록 `-C`는 상위 `coding` 폴더로 한다. 이 폴더는 git 저장소가 아니라서 `--skip-git-repo-check`가 필요하다. 네트워크 허용은 adb 서버(localhost) 연결용이다
+  - 승인된 파일만 커밋한다(`git add -A` 금지). push·버전 변경·Releases 게시는 맡기지 않는다
+  - 아래 "Android 릴리스 절차"의 금지 사항(디버그 키 서명, `adb uninstall`, 키·비밀번호 파일 읽기)을 그대로 지킨다. 서명 결과물은 `gjfire-tools/output/`을 어지럽히지 않게 `EMSLog/.codex-tmp/` 같은 git 밖 임시 폴더에서 만든다
+  - adb 입력 전에는 `topResumedActivity`로 전면 앱을 확인하고, 사용자가 다른 앱을 쓰는 중이면 앱을 띄우지 않는다
 - `--dangerously-bypass-approvals-and-sandbox`는 사용하지 않는다
 
 ## Android 릴리스 절차

@@ -19,7 +19,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { clinicalTheme } from "./clinicalTheme";
+import { clinicalTheme, scrim } from "./clinicalTheme";
 
 type Request = {
   id: number;
@@ -154,7 +154,7 @@ function DialogPanel({
 }) {
   const t = clinicalTheme(isDark);
   return (
-    <View style={styles.stage}>
+    <View style={[styles.stage, { backgroundColor: scrim("modal", isDark) }]}>
       <Pressable
         style={StyleSheet.absoluteFill}
         onPress={onClose}
@@ -292,7 +292,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
-    backgroundColor: "rgba(0,0,0,0.42)",
   },
   panel: {
     width: "100%",

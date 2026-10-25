@@ -11,7 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { RecordTabs } from "./ClinicalControls";
 import WheelColumn from "./NativeWheelColumn";
 import { wheelRange } from "./wheelOptions";
-import { clinicalTheme } from "./clinicalTheme";
+import { clinicalTheme, scrim } from "./clinicalTheme";
 import { formatDate, formatTime, weekdayForDate } from "./dateTime";
 import {
   changeWheel,
@@ -110,7 +110,7 @@ function WheelPickerSession({
       statusBarTranslucent
       navigationBarTranslucent
     >
-      <View style={styles.stage}>
+      <View style={[styles.stage, { backgroundColor: scrim("modal", isDark) }]}>
         <Pressable
           accessible={false}
           style={StyleSheet.absoluteFill}
@@ -191,7 +191,6 @@ function WheelPickerSession({
 const styles = StyleSheet.create({
   stage: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,.42)",
     justifyContent: "flex-end",
   },
   sheet: {

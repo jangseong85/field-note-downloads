@@ -16,7 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as SMS from "expo-sms";
-import { clinicalTheme } from "./clinicalTheme";
+import { clinicalTheme, scrim } from "./clinicalTheme";
 import { koreanNowParts } from "./dateTime";
 import type { MemoAttachment } from "./MemoAttachments";
 import { NoteModal, useNoteAlert } from "./NoteDialogs";
@@ -122,7 +122,7 @@ export default function SendPhotosSheet(p: Props) {
   );
   return (
     <NoteModal visible={p.visible} transparent animationType="slide" onRequestClose={p.onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.backdrop}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[s.backdrop, { backgroundColor: scrim("modal", p.isDark) }]}>
         <Pressable accessibilityLabel="문자 보내기 닫기" style={StyleSheet.absoluteFill} onPress={p.onClose} />
         <SafeAreaView edges={["bottom"]} style={[s.sheet, { backgroundColor: t.surface }]}>
           <View style={[s.grabber, { backgroundColor: t.border }]} />
@@ -248,7 +248,7 @@ export default function SendPhotosSheet(p: Props) {
   );
 }
 const s = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
+  backdrop: { flex: 1, justifyContent: "flex-end" },
   sheet: { maxHeight: "92%", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 16 },
   grabber: { width: 36, height: 5, borderRadius: 3, alignSelf: "center", marginTop: 8 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8 },
