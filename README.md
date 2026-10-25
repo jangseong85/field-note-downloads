@@ -4,7 +4,7 @@
 
 저장소: https://github.com/jangseong85/field-note-downloads
 
-소스 푸시만으로 APK 또는 홈페이지가 자동 업데이트되지는 않습니다. APK는 별도 빌드 후 Releases에 게시합니다. 디자인 기준은 `docs/DESIGN_SYSTEM.md`, 신규 SALS 동작은 `docs/SALS_TIMERS.md`를 참고하세요.
+소스 푸시만으로 APK 또는 홈페이지가 자동 업데이트되지는 않습니다. APK는 별도 빌드 후 Releases에 게시합니다. 디자인 기준은 `docs/DESIGN_SYSTEM.md`를 참고하세요. SALS 화면은 2026-10-25에 앱에서 제거했습니다(소스는 git 기록에 남아 있음).
 
 현장에서 환자 정보와 활력징후를 빠르게 기록하는 iOS/Android 앱입니다.
 

@@ -1,9 +1,3 @@
-export const nearestWheelIndex = (
-  offset: number,
-  rowHeight: number,
-  count: number,
-) => Math.max(0, Math.min(count - 1, Math.round(offset / rowHeight)));
-
 /** Fast enough to traverse years, bounded so individual values remain controllable. */
 export const wheelHoldDelay = (elapsed: number) => {
   const easedElapsed = elapsed * 0.8;

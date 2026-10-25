@@ -258,7 +258,6 @@ const styles = StyleSheet.create({
   },
   fields: { flexDirection: "row", gap: 10 },
   stacked: { flexDirection: "column" },
-  label: { fontFamily: "Pretendard-Regular", fontSize: 12, marginBottom: 7 },
   dateColumn: { flex: 1, minWidth: 0 },
   timeColumn: { width: 84 },
   fullWidth: { width: "100%" },

@@ -4,11 +4,11 @@
 
 ## 프로젝트 개요
 
-- 구급대원이 현장에서 환자 정보, 활력징후, 메모, 사진·녹음, SALS 타이머를 기록하는 오프라인 iOS/Android 앱
+- 구급대원이 현장에서 환자 정보, 활력징후, 메모, 사진·녹음을 기록하는 오프라인 iOS/Android 앱
 - Expo 54, React Native 0.81(New Architecture), React 19, TypeScript
 - 서버 없음. 환자 기록은 기기의 AsyncStorage와 앱 문서 폴더에만 저장
 - 앱 셸: `App.tsx` / 화면·컨트롤: `src/*.tsx` / 순수 로직: `src/*.ts`
-- 디자인 기준 `docs/DESIGN_SYSTEM.md`, SALS 동작 `docs/SALS_TIMERS.md`
+- 디자인 기준 `docs/DESIGN_SYSTEM.md`
 
 ## 검증 명령
 
@@ -17,7 +17,7 @@
 ```bash
 npm run typecheck
 npm run lint
-node --test tests/*.cjs scripts/test-*.cjs
+node --test scripts/test-*.cjs
 ```
 
 ML Kit 등 네이티브 모듈이 있어 Expo Go로는 실행되지 않습니다. 실기기 확인은 개발 빌드(`npx expo run:ios -d` / `npx expo run:android -d`)로 합니다.
@@ -164,7 +164,7 @@ Codex는 분석·리뷰 중 파일을 수정하지 않습니다. 디버깅은 �
 
 1. **데이터 유실** — 저장 순서(`patientSaveQueue`), 경합, 앱 종료·백그라운드 전환 중 저장, 리셋·삭제 시 파일 정리, 마이그레이션(`migrateStoredForm`)
 2. **개인정보** — 주민등록번호 뒷자리·OCR 원문·신분증 사진이 저장되거나 로그·공유 파일에 남지 않는지, 사진첩·외부 저장소 노출
-3. **의료 수치·시각** — BP·PR·RR·SpO₂·BT·BST 포맷과 범위, 한국시간(KST) 처리, 만 나이 계산, SALS 타이머 간격
+3. **의료 수치·시각** — BP·PR·RR·SpO₂·BT·BST 포맷과 범위, 한국시간(KST) 처리, 만 나이 계산
 4. **현장 사용성** — 장갑 낀 손·한 손 조작, 다크 모드, 실패 시 사용자에게 알리는지(조용히 삼키는 `catch`)
 5. 그 밖의 정확성 버그, 타입 안전성
 

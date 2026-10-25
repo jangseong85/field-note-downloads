@@ -1,53 +1,18 @@
 import { StyleSheet } from "react-native";
-import { clinicalMetrics } from "./clinicalTheme";
 
 /** Shared visual scale. Keep platform font scaling enabled on Text/TextInput. */
 export const design = {
-  radius: { control: clinicalMetrics.radius, card: 16 },
-  controlHeight: clinicalMetrics.fieldHeight,
-  spacing: { small: 8, medium: 16, large: 24 },
+  radius: { card: 16 },
+  spacing: { medium: 16 },
   type: { caption: 12, label: 14, body: 16, section: 18, title: 24 },
 } as const;
 
-const titleStyles = new Set(["title", "settingsTitle", "futureTitle"]);
-const headingStyles = new Set([
-  "sectionTitle",
-  "handwritingTitle",
-  "cameraTitle",
-]);
-const controlStyles = new Set([
-  "singleInput",
-  "onsetInput",
-  "onsetDateBox",
-  "onsetNowButton",
-  "timeDisplay",
-  "nowButton",
-  "segmentButton",
-  "ageDisplay",
-  "handwritingHeaderButton",
-  "handwritingSave",
-  "handwritingTool",
-]);
-const bodyStyles = new Set([
-  "memoInput",
-  "singleInput",
-  "onsetInput",
-  "onsetDateField",
-  "onsetWeekdayInline",
-  "timeValue",
-  "placeholder",
-  "modeTitle",
-]);
-// Memo-specific typography must retain its hierarchy rather than collapse to
+const titleStyles = new Set(["settingsTitle", "futureTitle"]);
+const headingStyles = new Set(["handwritingTitle", "cameraTitle"]);
+const bodyStyles = new Set(["modeTitle"]);
+// Memo-header typography must retain its hierarchy rather than collapse to
 // the generic 14px fallback. Other screens keep their existing normalization.
-const memoTypeStyles = new Set([
-  "patientName", "patientTabText", "patientTabTextSelected", "patientDeleteText",
-  "memoPageTitle", "memoPageCount", "sectionTitle", "memoInput", "vitalLabel",
-  "vitalInput", "unit", "drawButtonText",
-  "birthEntryInput", "birthEntryAge", "genderText", "patientCaptionText",
-  "measurementActionText", "measurementTabText", "historySummaryText",
-  "noteBrandNumber", "noteBrandText", "noteTitle",
-]);
+const memoTypeStyles = new Set(["noteBrandNumber", "noteBrandText", "noteTitle"]);
 
 /** Normalize by role, not by screen; preserve circular camera controls and media. */
 export function normalizeDesign<T extends StyleSheet.NamedStyles<T>>(
@@ -63,11 +28,9 @@ export function normalizeDesign<T extends StyleSheet.NamedStyles<T>>(
             ? design.type.section
             : bodyStyles.has(name)
               ? design.type.body
-              : name === "vitalInput"
-                ? 24
-                : style.fontSize <= 11
-                  ? design.type.caption
-                  : design.type.label;
+              : style.fontSize <= 11
+                ? design.type.caption
+                : design.type.label;
         style.fontSize = size;
         style.lineHeight = Math.ceil(size * 1.4);
         style.fontWeight = titleStyles.has(name)
@@ -76,11 +39,6 @@ export function normalizeDesign<T extends StyleSheet.NamedStyles<T>>(
               /Caption|Sub|Hint|unit|Unit|Placeholder/.test(name)
             ? "400"
             : "500";
-      }
-      if (controlStyles.has(name)) {
-        delete style.height;
-        style.minHeight = design.controlHeight;
-        style.borderRadius = design.radius.control;
       }
       if (name === "card") {
         style.borderRadius = design.radius.card;

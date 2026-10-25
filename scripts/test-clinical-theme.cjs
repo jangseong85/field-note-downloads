@@ -109,11 +109,10 @@ test("vital entries use large centered numbers with label above and unit below",
   assert.match(block, /fontScale > 1.7/);
   assert.doesNotMatch(block, /textAlign: "right"/);
 });
-test("SALS is neither mounted nor offered by the app, and its stored records are untouched", () => {
+test("SALS is not in the app, and records SALS left on devices are never deleted", () => {
   const app = read("App.tsx");
   assert.doesNotMatch(app, /import SalsPage|<SalsPage\b|key: "sals"|activeTab === "sals"/);
   assert.doesNotMatch(app, /removeItem\([^\n]*sals|multiRemove\(\[[^\]]*sals/);
-  assert.ok(fs.existsSync(path.join(__dirname, "../src/SalsPage.tsx")));
 });
 test("the old memo screen was replaced rather than hidden below the new one", () => {
   const app = read("App.tsx");

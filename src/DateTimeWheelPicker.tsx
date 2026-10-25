@@ -214,15 +214,6 @@ const styles = StyleSheet.create({
   },
   buttonText: { fontSize: 16, fontFamily: "Pretendard-Medium" },
   wheels: { flexDirection: "row", gap: 10 },
-  column: { flex: 1, minWidth: 0 },
-  columnLabel: {
-    fontSize: 13,
-    fontFamily: "Pretendard-Medium",
-    textAlign: "center",
-    marginBottom: 6,
-  },
-  selection: { position: "absolute", left: 0, right: 0, borderRadius: 14 },
-  wheelRow: { justifyContent: "center", alignItems: "center" },
   summary: {
     fontSize: 14,
     fontFamily: "Pretendard-Regular",

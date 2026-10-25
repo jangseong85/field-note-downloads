@@ -13,7 +13,7 @@ function load(name) {
   return cache[name] = result.exports;
 }
 const { wheelDraft, changeWheel, wheelParts, monthDays } = load("wheelDateTime");
-const { createWheelHold, nearestWheelIndex, wheelHoldDelay } = load("wheelMotion");
+const { createWheelHold, wheelHoldDelay } = load("wheelMotion");
 function fakeClock() {
   let now = 0, id = 0;
   const tasks = new Map();
@@ -46,10 +46,7 @@ test("hold stops at the endpoint without wrapping, restarting reverses direction
   hold.start(1); clock.advance(5000); assert.equal(value, 59); assert.equal(clock.pending(), 0);
   hold.start(-1); clock.advance(500); hold.stop(); assert.ok(value < 59 && value >= 0);
 });
-test("wheel overscroll snaps to a valid endpoint and native momentum is unrestricted", () => {
-  assert.equal(nearestWheelIndex(-80, 56, 60), 0);
-  assert.equal(nearestWheelIndex(10000, 56, 60), 59);
-  assert.equal(nearestWheelIndex(56 * 14.6, 56, 60), 15);
+test("native wheel momentum is unrestricted", () => {
   const source = read("NativeWheelColumn.tsx");
   assert.match(source, /@quidone\/react-native-wheel-picker/);
   assert.match(source, /disableIntervalMomentum=\{false\}/);

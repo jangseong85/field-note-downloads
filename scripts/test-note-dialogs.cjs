@@ -244,7 +244,7 @@ test("iOS uses the system alert; Android keeps the app's central dialog", async 
   assert.equal(plain.type, "Modal");
 });
 test("every app modal goes through NoteModal so iOS alerts stay visible", () => {
-  for (const file of ["App.tsx", "src/DateTimeWheelPicker.tsx", "src/MemoAttachments.tsx", "src/PatientNoteScreen.tsx", "src/SalsPage.tsx", "src/PatientContacts.tsx", "src/RecordAffiliation.tsx"]) {
+  for (const file of ["App.tsx", "src/DateTimeWheelPicker.tsx", "src/MemoAttachments.tsx", "src/PatientNoteScreen.tsx", "src/PatientContacts.tsx", "src/RecordAffiliation.tsx"]) {
     assert.doesNotMatch(read(file), /<Modal\b/, file);
   }
   const dialogs = read("src/NoteDialogs.tsx");
