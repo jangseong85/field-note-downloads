@@ -106,7 +106,7 @@ cd android && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
 
 ```bash
 cd ../gjfire-tools
-node tools/sign-android-apk.mjs ems-log ../EMSLog/android/app/build/outputs/apk/release/app-release.apk
+node tools/sign-android-apk.mjs ems-log ../FIELD-NOTE/android/app/build/outputs/apk/release/app-release.apk
 # 결과: output/android-apps/ems-log-<버전>.apk, ems-log-SHA256SUMS.txt
 ```
 
@@ -153,7 +153,7 @@ Releases 게시만으로는 홈페이지 다운로드가 바뀌지 않는다. `.
 
 규칙:
 
-- 생성·삭제는 `scripts/worktree.sh`로 한다. 위치는 저장소 바깥 `../EMSLog-worktrees/<topic>`
+- 생성·삭제는 `scripts/worktree.sh`로 한다. 위치는 저장소 바깥 `../FIELD-NOTE-worktrees/<topic>`
   ```bash
   scripts/worktree.sh new claude/<topic>   # 또는 codex/<topic>, 기준 브랜치 기본값 main
   scripts/worktree.sh list

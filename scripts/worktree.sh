@@ -3,11 +3,11 @@
 #   scripts/worktree.sh new <owner>/<topic> [base]   예) scripts/worktree.sh new codex/fix-save-race
 #   scripts/worktree.sh list
 #   scripts/worktree.sh remove <owner>/<topic>
-# 워크트리는 저장소 바깥 ../EMSLog-worktrees/<topic>에 만든다 (Metro가 중첩 폴더를 감시하지 않도록).
+# 워크트리는 저장소 바깥 ../FIELD-NOTE-worktrees/<topic>에 만든다 (Metro가 중첩 폴더를 감시하지 않도록).
 set -euo pipefail
 
 ROOT="$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)"
-BASE_DIR="$(dirname "$ROOT")/EMSLog-worktrees"
+BASE_DIR="$(dirname "$ROOT")/FIELD-NOTE-worktrees"
 
 usage() { sed -n 2,6p "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 
