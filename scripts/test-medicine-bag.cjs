@@ -4,12 +4,16 @@ const path = require("node:path");
 const test = require("node:test");
 const loadTs = require("./load-ts.cjs");
 const read = name => fs.readFileSync(path.join(__dirname, "..", name), "utf8");
-const { MEDICINE_BAG_PROMPT, CHATGPT_PACKAGE } = loadTs("medicineBagPrompt");
+const { MEDICINE_BAG_PROMPT, MEDICINE_DEPARTMENTS, CHATGPT_PACKAGE } = loadTs("medicineBagPrompt");
 const { fitContain, initialCrop, dragCrop, displayToImageCrop, capLongEdge, strokePath } = loadTs("medicineBagCrop");
 
-test("prompt asks for exactly the three agreed sections and a fixed unreadable sentence", () => {
-  const sections = MEDICINE_BAG_PROMPT.match(/^\d\. .+$/gm);
-  assert.deepEqual(sections, ["1. 약물명", "2. 부작용", "3. 추정 병력"]);
+test("prompt groups drugs by a fixed department list with the likely condition beside each drug", () => {
+  assert.equal(MEDICINE_BAG_PROMPT.match(/^\d\. .+$/gm), null, "no separate numbered sections");
+  assert.match(MEDICINE_BAG_PROMPT, /^■ 진료과\n- 약품명 \(성분명\) → 추정 병력\n  부작용: 주요 부작용 1줄$/m);
+  assert.ok(MEDICINE_BAG_PROMPT.includes(MEDICINE_DEPARTMENTS.join(", ")));
+  for (const name of ["심혈관계", "호흡기", "신경과", "정형외과", "비뇨기과", "신장내과"]) assert.ok(MEDICINE_DEPARTMENTS.includes(name), name);
+  assert.equal(MEDICINE_DEPARTMENTS.at(-1), "기타");
+  assert.match(MEDICINE_BAG_PROMPT, /약이 없는 진료과는 쓰지 않는다/);
   assert.match(MEDICINE_BAG_PROMPT, /"판독 불가: 약 이름 부분을 다시 촬영 바람"만 쓴다/);
   assert.match(MEDICINE_BAG_PROMPT, /인사말, 서론, 요약, 주의 문구, 추가 질문, 진료 권고/);
   assert.match(MEDICINE_BAG_PROMPT, /사람 이름, 병원·약국명, 연락처, 주소는 사진에 보여도 쓰지 않는다/);

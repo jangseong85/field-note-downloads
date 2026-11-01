@@ -35,7 +35,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Linking,
-  NativeModules,
   PanResponder,
   Platform,
   Pressable,
@@ -50,6 +49,7 @@ import { isBlankForm, migrateStoredForm, patientFileUris, type FormState } from 
 import { usePatientWorkspace } from "./src/usePatientWorkspace";
 import { usePatientFileCleanup } from "./src/usePatientFileCleanup";
 import { captureIdentityDocument } from "./src/identityCapture";
+import ShutterSound from "./modules/shutter-sound";
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -147,7 +147,6 @@ function FieldNoteApp() {
     "system",
   );
   const [activeTab, setActiveTab] = useState<AppTab>("patient");
-  const [smsOpen, setSmsOpen] = useState(false);
   const [scannerBusy, setScannerBusy] = useState(false);
   const [sender, setSender] = useState<SenderInfo>({ affiliation: "", rank: "", name: "" });
   const affiliation = sender.affiliation;
@@ -408,9 +407,10 @@ function FieldNoteApp() {
       const viewport = { ...cameraLayout };
       const guide = { ...guideFrame, y: guideTop + guideFrame.y };
       if (!viewport.width || !viewport.height || !guide.width || !guide.height) throw new Error("촬영 가이드가 준비되지 않았습니다. 잠시 후 다시 촬영해 주세요.");
-      const photo = await cameraRef.current?.takePictureAsync({ quality: 1, skipProcessing: false, shutterSound: false });
+      // The phone's own shutter click plays on press; expo-camera's beep is only the fallback without the module.
+      ShutterSound?.play();
+      const photo = await cameraRef.current?.takePictureAsync({ quality: 1, skipProcessing: false, shutterSound: !ShutterSound });
       if (!photo?.uri) return;
-      NativeModules.SoftShutter?.play();
       setCameraVisible(false);
       // Recognised values fill empty fields only; values the paramedic typed are replaced after confirmation.
       let conflicts: { key: "name" | "birthDate" | "gender"; label: string; typed: string; read: string }[] = [];
@@ -490,13 +490,11 @@ function FieldNoteApp() {
                   {activeTab === "settings" && <Text style={[styles.noteTitle, { color: clinicalTheme(isDark).ink }]}>설정</Text>}
                 </View>
                 {activeTab !== "settings" && <View style={styles.noteHeaderActions}>
-                  <Pressable accessibilityRole="button" accessibilityLabel="사진과 기록을 문자로 보내기" disabled={mediaBusy} onPress={() => setSmsOpen(true)} style={({ pressed }) => [styles.noteHeaderMenu, { borderRadius: 22, backgroundColor: clinicalTheme(isDark).surface, borderWidth: StyleSheet.hairlineWidth, borderColor: clinicalTheme(isDark).border, opacity: mediaBusy ? 0.4 : pressed ? 0.6 : 1 }]}><Ionicons name="chatbubble-ellipses-outline" size={20} color={clinicalTheme(isDark).accent} /></Pressable>
                   <Pressable ref={optionsButtonRef} accessibilityRole="button" accessibilityLabel="메모 메뉴" onPress={openOptions} style={[styles.noteHeaderMenu, { borderRadius: 22, backgroundColor: clinicalTheme(isDark).surface, borderWidth: StyleSheet.hairlineWidth, borderColor: clinicalTheme(isDark).border }]}><Ionicons name="ellipsis-horizontal" size={20} color={clinicalTheme(isDark).ink} /></Pressable>
                 </View>}
               </View>
               {activeTab !== "settings" ? (
                 <PatientNoteScreen section={activeTab} isDark={isDark} form={form} useWheelPicker={useWheelPicker}
-                  smsOpen={smsOpen} onSmsClose={() => setSmsOpen(false)}
                   patients={patients.map((patient, index) => ({ id: patient.id, label: (patient.id === activePatientId ? form.name : patient.form.name).trim() || `환자 ${index + 1}` }))} activePatientId={activePatientId}
                   measurements={snapshotMeasurements(form)}
                   busy={scannerBusy || deletingPatient} mediaBusy={mediaBusy} onSelectPatient={selectPatient} onAddPatient={() => selectPatient()} onDeletePatient={requestDeletePatient} onUpdate={update}

@@ -84,3 +84,36 @@ test("contacts are blank by default and patient-owned; affiliation is separate s
   assert.match(read("src/RecordAffiliation.tsx"), /ems-log.affiliation.v1/);
   assert.match(read("src/RecordAffiliation.tsx"), /\[AFFILIATION_KEY, next\.affiliation\]/);
 });
+test("기타 opens a typed relation that is saved as written and comes back on reopen", () => {
+  const render = harness();
+  const changes = [];
+  const props = { isDark: false, form: { patientPhone: "", guardianPhone: "", guardianName: "", guardianRelation: "" }, onUpdate: (...args) => changes.push(args) };
+  const chip = (all, label) => all.find(n => n.props.accessibilityRole === "radio" && nodes(n).some(c => c.type === "Text" && c.props.children.includes(label)));
+  const typed = all => all.find(n => n.props.accessibilityLabel === "보호자 관계 직접 입력");
+  const apply = all => all.find(n => n.type === "Button" && n.props.accessibilityLabel === "적용").props.onPress();
+  nodes(render(props)).find(n => n.props.accessibilityLabel === "보호자 관계와 이름 설정").props.onPress();
+  let all = nodes(render(props));
+  assert.equal(typed(all), undefined);
+  chip(all, "기타").props.onPress();
+  all = nodes(render(props));
+  typed(all).props.onChangeText(" 조카 ");
+  apply(nodes(render(props)));
+  assert.deepEqual(changes[0], ["guardianRelation", "조카"]);
+
+  changes.length = 0;
+  const saved = { ...props, form: { ...props.form, guardianRelation: "조카" } };
+  nodes(render(saved)).find(n => n.props.accessibilityLabel === "보호자 관계와 이름 설정").props.onPress();
+  all = nodes(render(saved));
+  assert.equal(chip(all, "기타").props.accessibilityState.selected, true);
+  assert.equal(typed(all).props.value, "조카");
+  typed(all).props.onChangeText("");
+  apply(nodes(render(saved)));
+  assert.deepEqual(changes[0], ["guardianRelation", "기타"]);
+
+  changes.length = 0;
+  const family = { ...props, form: { ...props.form, guardianRelation: "배우자" } };
+  nodes(render(family)).find(n => n.props.accessibilityLabel === "보호자 관계와 이름 설정").props.onPress();
+  all = nodes(render(family));
+  assert.equal(chip(all, "배우자").props.accessibilityState.selected, true);
+  assert.equal(typed(all), undefined);
+});

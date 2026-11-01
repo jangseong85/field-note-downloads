@@ -6,18 +6,19 @@ test("five tabs split the record into patient, status, medication and records, t
   assert.deepEqual(NAVIGATION_ITEMS.map(item=>item.label),["환자","상태","약물","기록","설정"]);
   assert.equal(new Set(NAVIGATION_ITEMS.map(item=>item.id)).size,5);
 });
-test("each record tab shows only its part; SMS moved to the header",()=>{
+test("each record tab shows only its part; SMS sits under the attachments",()=>{
   const fs=require("node:fs"),path=require("node:path");
   const read=name=>fs.readFileSync(path.join(__dirname,"..",name),"utf8");
   const screen=read("src/PatientNoteScreen.tsx");
   for(const section of ["patient","status","medication"]) assert.match(screen,new RegExp(`p\\.section === "${section}" && `));
   assert.match(screen,/\{p\.section === "records" && <View style=\{\[s\.attachmentsSection/);
-  assert.match(screen,/<SendPhotosSheet\s+key=\{p\.activePatientId\}\s+visible=\{p\.smsOpen\}/);
+  assert.match(screen,/onBusyChange=\{p\.onMediaBusyChange\}\s+\/>\s+<Pressable\s+accessibilityRole="button"\s+accessibilityLabel="사진과 기록을 문자로 보내기"\s+disabled=\{p\.mediaBusy\}/);
+  assert.match(screen,/<SendPhotosSheet\s+key=\{p\.activePatientId\}\s+visible=\{smsOpen\}/);
   assert.match(screen,/<MedicineBagAnalysis\b/);
   const media=read("src/MemoAttachments.tsx");
   assert.doesNotMatch(media,/SendPhotosSheet|문자로 보내기|MedicineBagAnalysis/);
   const app=read("App.tsx");
-  assert.match(app,/accessibilityLabel="사진과 기록을 문자로 보내기" disabled=\{mediaBusy\} onPress=\{\(\) => setSmsOpen\(true\)\}/);
+  assert.doesNotMatch(app,/문자로 보내기|setSmsOpen|chatbubble/);
   assert.match(app,/if \(activeTab === "patient"\) return false;\s+navigate\("patient"\);/);
 });
 test("compact navigation fits scaled labels without shrinking touch targets",()=>{

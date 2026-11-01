@@ -25,12 +25,12 @@ export const POPOVER_WIDTH = 300;
 const EDGE = 16;
 const GAP = 8;
 
-/** Places the panel below the anchor, right-aligned to it, inside the screen edges. */
+/** Places the panel below the anchor, right-aligned to it, inside the screen edges. It is only as wide as its rows. */
 export function popoverPosition(anchor: PopoverAnchor | null, screenWidth: number) {
-  const width = Math.min(POPOVER_WIDTH, screenWidth - EDGE * 2);
-  if (!anchor) return { top: 104, right: EDGE, width };
+  const maxWidth = Math.min(POPOVER_WIDTH, screenWidth - EDGE * 2);
+  if (!anchor) return { top: 104, right: EDGE, maxWidth };
   const right = Math.max(EDGE, screenWidth - (anchor.x + anchor.width));
-  return { top: anchor.y + anchor.height + GAP, right, width };
+  return { top: anchor.y + anchor.height + GAP, right, maxWidth };
 }
 
 /** Memo actions under the header ⋯ button. Preferences live only on the settings tab. */
@@ -74,7 +74,7 @@ export default function RecordOptionsPopover(p: Props) {
           {
             opacity: appear,
             transform: [
-              { translateX: appear.interpolate({ inputRange: [0, 1], outputRange: [position.width * 0.08, 0] }) },
+              { translateX: appear.interpolate({ inputRange: [0, 1], outputRange: [position.maxWidth * 0.08, 0] }) },
               { translateY: appear.interpolate({ inputRange: [0, 1], outputRange: [-16, 0] }) },
               { scale: appear.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1], easing: Easing.out(Easing.quad) }) },
             ],
@@ -87,7 +87,7 @@ export default function RecordOptionsPopover(p: Props) {
           style={({ pressed }) => [styles.row, { opacity: pressed ? 0.6 : 1 }]}
         >
           <Ionicons name="trash-outline" size={20} color={t.danger} />
-          <Text style={[styles.label, styles.grow, { color: t.danger }]}>환자 기록 전체 초기화</Text>
+          <Text style={[styles.label, { color: t.danger }]}>환자 기록 전체 초기화</Text>
         </Pressable>
       </Animated.View>
     </NoteModal>
@@ -98,7 +98,8 @@ const useStyles = makeStyles({
     position: "absolute",
     borderRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
+    paddingLeft: 16,
+    paddingRight: 20,
     paddingVertical: 4,
     shadowColor: "#000000",
     shadowOpacity: 0.35,
@@ -107,5 +108,4 @@ const useStyles = makeStyles({
   },
   row: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12 },
   label: { fontSize: TYPE.body, fontFamily: "Pretendard-Regular" },
-  grow: { flex: 1 },
 });

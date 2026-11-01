@@ -11,12 +11,30 @@ import { TYPE, makeStyles, useType } from "./design";
 
 export const GUARDIAN_RELATIONS = [
   "부모",
+  "배우자",
+  "자녀",
+  "형제자매",
+  "조부모",
+  "손자녀",
+  "며느리",
+  "사위",
   "친인척",
   "지인",
   "요양보호사",
   "회사관계자",
   "기타",
 ];
+const OTHER = "기타";
+
+/** A saved relation that is not one of the chips was typed under 기타. */
+export function splitRelation(value: string): { relation: string; custom: string } {
+  if (!value || (GUARDIAN_RELATIONS.includes(value) && value !== OTHER)) return { relation: value, custom: "" };
+  return { relation: OTHER, custom: value === OTHER ? "" : value };
+}
+
+export function joinRelation(relation: string, custom: string): string {
+  return relation === OTHER ? custom.trim() || OTHER : relation;
+}
 export type ContactKey =
   "patientPhone" | "guardianPhone" | "guardianName" | "guardianRelation";
 export default function PatientContacts({
@@ -38,6 +56,7 @@ export default function PatientContacts({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [relation, setRelation] = useState("");
+  const [custom, setCustom] = useState("");
   const labelStyle = {
     color: t.muted,
     fontSize: type.sub,
@@ -69,7 +88,9 @@ export default function PatientContacts({
           style={rows.label}
           onPress={() => {
             setName(form.guardianName);
-            setRelation(form.guardianRelation);
+            const saved = splitRelation(form.guardianRelation);
+            setRelation(saved.relation);
+            setCustom(saved.custom);
             setOpen(true);
           }}
         >
@@ -103,6 +124,7 @@ export default function PatientContacts({
                 accessibilityLabel="보호자 관계와 이름 지우기"
                 onPress={() => {
                   setRelation("");
+                  setCustom("");
                   setName("");
                 }}
                 style={[sheet.round, { backgroundColor: t.field }]}
@@ -114,7 +136,7 @@ export default function PatientContacts({
                 accessibilityRole="button"
                 accessibilityLabel="적용"
                 onPress={() => {
-                  onUpdate("guardianRelation", relation);
+                  onUpdate("guardianRelation", joinRelation(relation, custom));
                   onUpdate("guardianName", name.trim());
                   setOpen(false);
                 }}
@@ -145,6 +167,25 @@ export default function PatientContacts({
                 </Pressable>
               ))}
             </View>
+            {relation === OTHER && (
+              <View style={sheet.custom}>
+                <ClinicalInput
+                  isDark={isDark}
+                  value={custom}
+                  onChangeText={setCustom}
+                  maxLength={20}
+                  autoFocus
+                  placeholder="관계 직접 입력 (예: 조카, 이웃)"
+                  accessibilityLabel="보호자 관계 직접 입력"
+                  style={{ paddingRight: 48 }}
+                />
+                {!!custom && (
+                  <Pressable accessibilityRole="button" accessibilityLabel="관계 지우기" onPress={() => setCustom("")} style={sheet.clear}>
+                    <Ionicons name="close-circle" size={20} color={t.muted} />
+                  </Pressable>
+                )}
+              </View>
+            )}
             <Text style={[labelStyle, sheet.label]}>이름 (선택)</Text>
             <View>
               <ClinicalInput
@@ -178,6 +219,7 @@ const useSheet = makeStyles({
   label: { marginTop: 12, marginBottom: 8, marginHorizontal: 4 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { minHeight: 44, paddingHorizontal: 16, borderRadius: 22, justifyContent: "center" },
+  custom: { marginTop: 10 },
   clear: { position: "absolute", right: 4, top: 0, bottom: 0, width: 44, alignItems: "center", justifyContent: "center" },
 });
 const useRows = makeStyles({

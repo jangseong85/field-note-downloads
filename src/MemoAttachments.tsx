@@ -28,6 +28,7 @@ import { clinicalTheme } from "./clinicalTheme";
 import { RecordTabs } from "./ClinicalControls";
 import { NoteModal, useNoteAlert } from "./NoteDialogs";
 import { TYPE, makeStyles } from "./design";
+import ShutterSound from "../modules/shutter-sound";
 
 export type MemoAttachment = {
   id: string;
@@ -307,7 +308,8 @@ export default function MemoAttachments({
     setWorking(true);
     try {
       if (!pendingPhoto.current) {
-        const photo = await camera.current!.takePictureAsync({ quality: 0.7 });
+        ShutterSound?.play();
+        const photo = await camera.current!.takePictureAsync({ quality: 0.7, shutterSound: !ShutterSound });
         if (!photo?.uri) throw new Error("No photo");
         pendingPhoto.current = prepareFile(photo.uri, "photo");
         setPhotoNeedsRetry(true);

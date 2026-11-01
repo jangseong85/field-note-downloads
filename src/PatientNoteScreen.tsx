@@ -59,8 +59,6 @@ type Props = {
   /** Which bottom tab is showing; the patient rail above it is shared by all four. */
   section: NoteSection;
   /** The header 문자 button opens the SMS sheet for the selected patient. */
-  smsOpen: boolean;
-  onSmsClose: () => void;
   isDark: boolean;
   useWheelPicker?: boolean;
   form: NoteForm;
@@ -116,6 +114,7 @@ export default function PatientNoteScreen(p: Props) {
   const [focusedVital, setFocusedVital] = useState<VitalKey | null>(null);
   const [birthPickerOpen, setBirthPickerOpen] = useState(false);
   const [medicineOpen, setMedicineOpen] = useState(false);
+  const [smsOpen, setSmsOpen] = useState(false);
   useEffect(() => {
     setHistoryOpen(false);
     setPreview(null);
@@ -611,6 +610,19 @@ export default function PatientNoteScreen(p: Props) {
           onRemove={p.onRemoveAttachment}
           onBusyChange={p.onMediaBusyChange}
         />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="사진과 기록을 문자로 보내기"
+          disabled={p.mediaBusy}
+          onPress={() => setSmsOpen(true)}
+          style={({ pressed }) => [
+            s.smsButton,
+            { backgroundColor: t.field, opacity: p.mediaBusy ? 0.4 : pressed ? 0.6 : 1 },
+          ]}
+        >
+          <Ionicons name="chatbubble-ellipses-outline" size={18} color={t.accent} />
+          <Text style={[s.medicineText, { color: t.accent }]}>문자로 보내기</Text>
+        </Pressable>
       </View>}
       <MedicineBagAnalysis
         visible={medicineOpen}
@@ -622,10 +634,10 @@ export default function PatientNoteScreen(p: Props) {
       />
       <SendPhotosSheet
         key={p.activePatientId}
-        visible={p.smsOpen}
+        visible={smsOpen}
         isDark={isDark}
         photos={form.attachments.filter((item) => item.kind === "photo")}
-        onClose={p.onSmsClose}
+        onClose={() => setSmsOpen(false)}
         source={{
           sender: p.sender,
           name: form.name,
@@ -827,6 +839,15 @@ const useS = makeStyles({
   attachmentsSection: { borderRadius: 26, marginTop: 16, padding: 20 },
   medicineButton: {
     minHeight: 52,
+    borderRadius: 26,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  smsButton: {
+    minHeight: 52,
+    marginTop: 14,
     borderRadius: 26,
     flexDirection: "row",
     alignItems: "center",

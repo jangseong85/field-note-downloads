@@ -271,9 +271,9 @@ test("splash HTML is generated locally and bundled for both platforms", () => {
 });
 test("record options popover sits under the ⋯ button inside the screen edges", () => {
   const { popoverPosition, POPOVER_WIDTH } = harness("src/RecordOptionsPopover.tsx", { os: "ios" }).exports;
-  assert.deepEqual(popoverPosition({ x: 330, y: 60, width: 44, height: 44 }, 390), { top: 112, right: 16, width: POPOVER_WIDTH });
+  assert.deepEqual(popoverPosition({ x: 330, y: 60, width: 44, height: 44 }, 390), { top: 112, right: 16, maxWidth: POPOVER_WIDTH });
   assert.equal(popoverPosition({ x: 370, y: 60, width: 44, height: 44 }, 390).right, 16, "never past the right edge");
-  assert.equal(popoverPosition({ x: 300, y: 60, width: 44, height: 44 }, 320).width, 288, "narrow screens keep 16pt edges");
+  assert.equal(popoverPosition({ x: 300, y: 60, width: 44, height: 44 }, 320).maxWidth, 288, "narrow screens keep 16pt edges");
   assert.equal(popoverPosition(null, 390).right, 16);
 });
 test("the ⋯ memo menu holds memo actions only and closes before the reset confirmation", () => {
