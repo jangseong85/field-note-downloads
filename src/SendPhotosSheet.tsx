@@ -24,7 +24,8 @@ import { formatPhoneNumber } from "./phoneNumber";
 import { SMS_SECTIONS, SmsSection, SmsSource, buildSmsMessage, smsLines } from "./smsMessage";
 import { TYPE, makeStyles } from "./design";
 
-export const MAX_SMS_PHOTOS = 10;
+/** Messaging apps attached only the first image of several on the phone, so one photo is picked. */
+export const MAX_SMS_PHOTOS = 1;
 const SECTION_LABELS: Record<SmsSection, { title: string; detail: string }> = {
   affiliation: { title: "소속", detail: "소속, 계급, 성명" },
   identity: { title: "인적사항", detail: "이름, 생년월일" },
@@ -80,14 +81,8 @@ export default function SendPhotosSheet(p: Props) {
   const digits = address.replace(/\D/g, "");
   const canSend = digits.length >= 9 && (picked.length > 0 || body.length > 0) && !sending;
   const allOn = available.length > 0 && available.every((section) => sections.includes(section));
-  const togglePhoto = (id: string) =>
-    setSelected((current) =>
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : current.length >= MAX_SMS_PHOTOS
-          ? current
-          : [...current, id],
-    );
+  // Picking another photo replaces the current one; tapping the picked photo sends text only.
+  const togglePhoto = (id: string) => setSelected((current) => (current.includes(id) ? [] : [id]));
   const toggleSection = (section: SmsSection) =>
     setSections((current) =>
       current.includes(section) ? current.filter((item) => item !== section) : [...current, section],
@@ -175,7 +170,7 @@ export default function SendPhotosSheet(p: Props) {
               </View>
             )}
             <Text style={[s.label, { color: t.muted }]}>
-              사진 {picked.length} / {MAX_SMS_PHOTOS}
+              {picked.length ? "사진 1장 (MMS는 1장만 첨부됩니다)" : "사진 없음 · 내용만 보냅니다"}
             </Text>
             {p.photos.length === 0 ? (
               <Text style={[s.empty, { color: t.muted }]}>첨부한 사진이 없습니다. 내용만 보냅니다.</Text>
@@ -186,8 +181,8 @@ export default function SendPhotosSheet(p: Props) {
                   return (
                     <Pressable
                       key={photo.id}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: on }}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: on }}
                       accessibilityLabel={`사진 ${index + 1} 보내기`}
                       onPress={() => togglePhoto(photo.id)}
                     >

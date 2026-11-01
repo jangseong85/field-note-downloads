@@ -29,3 +29,13 @@ test("the splash intro can be skipped with a tap and the built page stays light"
   assert.match(read("web-splash/src/App.tsx"), /field24-scene-v3\.jpg/);
   assert.match(read("web-splash/src/App.tsx"), /<span className="brand-119">119<\/span><span className="brand-bar" aria-hidden="true">\|<\/span>FIELD NOTE/);
 });
+
+test("SMS sends one photo: messaging apps kept only the first of several", () => {
+  const sheet = read("src/SendPhotosSheet.tsx");
+  assert.match(sheet, /export const MAX_SMS_PHOTOS = 1;/);
+  assert.match(sheet, /setSelected\(\(current\) => \(current\.includes\(id\) \? \[\] : \[id\]\)\)/, "a new pick replaces the old one");
+  assert.match(sheet, /accessibilityRole="radio"/);
+  assert.match(sheet, /p\.photos\.slice\(-MAX_SMS_PHOTOS\)/, "the latest photo is picked by default");
+  const kotlin = read("modules/shutter-sound/android/src/main/java/expo/modules/shuttersound/ShutterSoundModule.kt");
+  assert.match(kotlin, /ensurePool\(\) \?: return@Function null/, "Function bodies must return a value");
+});

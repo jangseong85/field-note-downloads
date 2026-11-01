@@ -62,7 +62,7 @@ class ShutterSoundModule : Module() {
     }
 
     Function("play") {
-      val soundPool = ensurePool() ?: return@Function
+      val soundPool = ensurePool() ?: return@Function null
       if (loaded) soundPool.play(click, VOLUME, VOLUME, 1, 0, 1f) else playWhenLoaded = true
     }
   }
