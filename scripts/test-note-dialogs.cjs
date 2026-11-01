@@ -51,6 +51,7 @@ function harness(file, { os = "android" } = {}) {
       new Function("require", "module", "exports", ts.transpileModule(read("src/design.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(ref => ref === "react" ? React : ref === "react-native" ? { StyleSheet: { create: x => x } } : undefined, m, m.exports);
       return m.exports;
     }
+    if (name === "./PolicyDocumentScreen") return { __esModule: true, default: "PolicyScreen" };
     if (name === "./privacyNotice") {
       const m = { exports: {} };
       new Function("module", "exports", ts.transpileModule(read("src/privacyNotice.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(m, m.exports);
@@ -377,16 +378,25 @@ test("settings preserves all device preference callbacks and affiliation editing
   assert.equal(sizes.props.selectedId,"medium");
 });
 
-test("settings ends with a businesslike privacy policy and usage notice that match the app's behaviour", () => {
+test("settings opens a full privacy policy and terms of use written for release", () => {
   const m = { exports: {} };
   new Function("module", "exports", ts.transpileModule(read("src/privacyNotice.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(m, m.exports);
-  const { PRIVACY_NOTICE, USAGE_NOTICE } = m.exports;
-  assert.deepEqual(PRIVACY_NOTICE.map(item => item.title), ["처리 항목", "처리 목적", "보관 위치", "보관 기간 및 파기", "외부 전송", "사용자 유의사항"]);
-  assert.match(PRIVACY_NOTICE.find(item => item.title === "보관 기간 및 파기").body, /등록 후 24시간 경과 시/);
-  assert.match(PRIVACY_NOTICE.find(item => item.title === "보관 위치").body, /서버로 전송하지 않음/);
-  assert.match(USAGE_NOTICE.find(item => item.title === "처방전 분석").body, /참고용/);
-  for (const item of [...PRIVACY_NOTICE, ...USAGE_NOTICE]) assert.doesNotMatch(item.body, /해 주세요|합니다|됩니다/, "개조식 문체");
+  const { PRIVACY_POLICY, TERMS_OF_USE } = m.exports;
+  const headings = doc => doc.sections.map(section => section.heading.replace(/^제\d+조 /, ""));
+  for (const required of ["(처리하는 개인정보의 항목)", "(개인정보의 처리 목적)", "(개인정보의 보유 기간 및 파기)", "(개인정보의 제3자 제공 및 국외 이전)", "(개인정보 처리의 위탁)", "(정보주체의 권리와 행사 방법)", "(개인정보의 안전성 확보 조치)", "(문의처)", "(처리방침의 변경)"])
+    assert.ok(headings(PRIVACY_POLICY).includes(required), required);
+  const text = doc => JSON.stringify(doc);
+  assert.match(text(PRIVACY_POLICY), /등록 후 24시간이 지나면/);
+  assert.match(text(PRIVACY_POLICY), /서버로 전송하지 않습니다/);
+  assert.match(text(PRIVACY_POLICY), /OpenAI/, "ChatGPT hand-off is disclosed as a possible overseas transfer");
+  assert.match(text(TERMS_OF_USE), /의료기기가 아니며/);
+  assert.match(text(PRIVACY_POLICY), /contact@gjfire\.xyz/);
+  assert.match(text(TERMS_OF_USE), /contact@gjfire\.xyz/);
+  assert.match(text(TERMS_OF_USE), /고의 또는 중대한 과실/, "liability limit keeps the statutory exception");
+  PRIVACY_POLICY.sections.forEach((section, index) => assert.match(section.heading, new RegExp(`^제${index + 1}조 `)));
+  TERMS_OF_USE.sections.forEach((section, index) => assert.match(section.heading, new RegExp(`^제${index + 1}조 `)));
   const settings = read("src/SettingsScreen.tsx");
-  assert.match(settings, /\["개인정보 처리방침", PRIVACY_NOTICE\], \["이용 안내", USAGE_NOTICE\]/);
-  assert.doesNotMatch(settings, />기록 보관</);
+  assert.match(settings, /\[PRIVACY_POLICY, TERMS_OF_USE\]\.map/);
+  assert.match(settings, /<PolicyDocumentScreen document=\{policy\}/);
+  assert.doesNotMatch(settings, /PRIVACY_NOTICE|USAGE_NOTICE/);
 });

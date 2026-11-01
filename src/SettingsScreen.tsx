@@ -1,10 +1,12 @@
-import React from "react";
-import { Text, View } from "react-native";
+import React, { useState } from "react";
+import { Pressable, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import RecordAffiliation from "./RecordAffiliation";
 import SquishThemeSwitch from "./SquishThemeSwitch";
 import { RecordTabs } from "./ClinicalControls";
 import { clinicalTheme } from "./clinicalTheme";
-import { PRIVACY_NOTICE, USAGE_NOTICE } from "./privacyNotice";
+import PolicyDocumentScreen from "./PolicyDocumentScreen";
+import { PRIVACY_POLICY, TERMS_OF_USE, type PolicyDocument } from "./privacyNotice";
 import type { SenderInfo } from "./smsMessage";
 import { TYPE, makeStyles, useTextSize, type TextSize } from "./design";
 
@@ -35,6 +37,7 @@ export default function SettingsScreen(p: Props) {
   const textSize = useTextSize();
   const t = clinicalTheme(p.isDark);
   const en = p.medicalTerms;
+  const [policy, setPolicy] = useState<PolicyDocument | null>(null);
   return <View style={styles.page}>
     <View style={[styles.card, { backgroundColor: t.surface }]}>
       <Text style={[styles.heading, { color: t.ink }]}>{en ? "Unit · Crew" : "소속 · 대원 정보"}</Text>
@@ -43,12 +46,9 @@ export default function SettingsScreen(p: Props) {
     <View style={[styles.card, { backgroundColor: t.surface }]}>
       <Text style={[styles.heading, { color: t.ink }]}>{en ? "Display · Input" : "화면 · 입력 방식"}</Text>
       <View style={[styles.sizeRow, { backgroundColor: t.field }]}>
-        <Text style={[styles.label, { color: t.ink }]}>언어 · Language</Text>
-        <RecordTabs isDark={p.isDark} label="언어 · Language" selectionRole="radio" options={LANGUAGE_OPTIONS}
+        <Text style={[styles.label, { color: t.ink }]}>{en ? "Language" : "언어"}</Text>
+        <RecordTabs isDark={p.isDark} label={en ? "Language" : "언어"} selectionRole="radio" options={LANGUAGE_OPTIONS}
           selectedId={en ? "en" : "ko"} onSelect={id => p.onMedicalTermsChange(id === "en")} />
-        <Text style={[styles.detail, { color: t.muted }]}>
-          {en ? "Medical abbreviations first (C/C, V/S, HTN); records are saved in Korean." : "영문은 의학 약어(C/C, V/S, HTN)를 우선 표기합니다. 저장 값은 한글로 유지됩니다."}
-        </Text>
       </View>
       <View style={[styles.sizeRow, { backgroundColor: t.field }]}>
         <Text style={[styles.label, { color: t.ink }]}>{en ? "Text size" : "글자 크기"}</Text>
@@ -70,17 +70,25 @@ export default function SettingsScreen(p: Props) {
         <SquishThemeSwitch isDark={p.isDark} accessibilityLabel="휠 모드 사용" checked={p.useWheelPicker} disabled={!p.wheelPreferenceReady} onChange={p.onWheelChange} />
       </View>
     </View>
-    {([["개인정보 처리방침", PRIVACY_NOTICE], ["이용 안내", USAGE_NOTICE]] as const).map(([heading, items]) => (
-      <View key={heading} style={[styles.card, { backgroundColor: t.surface }]}>
-        <Text style={[styles.heading, { color: t.ink }]}>{heading}</Text>
-        {items.map((item) => (
-          <View key={item.title} style={styles.notice}>
-            <Text style={[styles.noticeTitle, { color: t.ink }]}>{item.title}</Text>
-            <Text style={[styles.detail, { color: t.muted }]}>{item.body}</Text>
+    <View style={[styles.card, { backgroundColor: t.surface }]}>
+      <Text style={[styles.heading, { color: t.ink }]}>{en ? "Policies" : "약관 및 정책"}</Text>
+      {[PRIVACY_POLICY, TERMS_OF_USE].map((document) => (
+        <Pressable
+          key={document.title}
+          accessibilityRole="button"
+          accessibilityLabel={`${document.title} 보기`}
+          onPress={() => setPolicy(document)}
+          style={({ pressed }) => [styles.row, { backgroundColor: t.field, opacity: pressed ? 0.6 : 1 }]}
+        >
+          <View style={styles.labelBlock}>
+            <Text style={[styles.label, { color: t.ink }]}>{document.title}</Text>
+            <Text style={[styles.detail, { color: t.muted }]}>시행일 {document.effective}</Text>
           </View>
-        ))}
-      </View>
-    ))}
+          <Ionicons name="chevron-forward" size={18} color={t.muted} style={styles.chevron} />
+        </Pressable>
+      ))}
+    </View>
+    <PolicyDocumentScreen document={policy} isDark={p.isDark} onClose={() => setPolicy(null)} />
   </View>;
 }
 
@@ -93,6 +101,5 @@ const useStyles = makeStyles({
   labelBlock: { flex: 1, paddingVertical: 12, gap: 4 },
   label: { fontSize: TYPE.body, lineHeight: 23, fontFamily: "Pretendard-Medium" },
   detail: { fontSize: TYPE.sub, lineHeight: 19, fontFamily: "Pretendard-Regular" },
-  notice: { gap: 4 },
-  noticeTitle: { fontSize: TYPE.sub, lineHeight: 19, fontFamily: "Pretendard-Medium" },
+  chevron: { marginRight: 16 },
 });

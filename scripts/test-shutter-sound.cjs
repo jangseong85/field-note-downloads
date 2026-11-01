@@ -11,9 +11,11 @@ test("wound and ID photos play the soft shutter click and drop expo-camera's bee
   ]) assert.match(read(file), call, file);
   assert.doesNotMatch(read("App.tsx"), /SoftShutter/);
   const kotlin = read("modules/shutter-sound/android/src/main/java/expo/modules/shuttersound/ShutterSoundModule.kt");
-  assert.match(kotlin, /it\.load\(context, R\.raw\.soft_shutter, 1\)/, "soft bundled click, not the loud system shutter");
+  assert.match(kotlin, /created\.load\(context, R\.raw\.soft_shutter, 1\)/, "soft bundled click, not the loud system shutter");
   assert.doesNotMatch(kotlin, /MediaActionSound/);
   assert.match(kotlin, /private const val VOLUME = 0\.45f/);
+  assert.match(kotlin, /setFlags\(AudioAttributes\.FLAG_AUDIBILITY_ENFORCED\)/, "plays on silent/vibrate like a camera shutter");
+  assert.match(kotlin, /if \(loaded\) soundPool\.play\(click, VOLUME, VOLUME, 1, 0, 1f\) else playWhenLoaded = true/, "a press before loading finishes still clicks");
   assert.ok(fs.statSync(path.join(__dirname, "../modules/shutter-sound/android/src/main/res/raw/soft_shutter.wav")).size < 20000);
   assert.match(read("modules/shutter-sound/expo-module.config.json"), /expo\.modules\.shuttersound\.ShutterSoundModule/);
 });
