@@ -580,7 +580,7 @@ export default function PatientNoteScreen(p: Props) {
             {drawing(form.historyDrawing, "historyDrawing")}
           </View>
           <View style={s.section}>
-            {heading("복용 약물")}
+            {heading(medical ? "Meds" : "복용 약물")}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="처방전 사진을 ChatGPT로 분석"
@@ -595,7 +595,7 @@ export default function PatientNoteScreen(p: Props) {
               ]}
             >
               <Ionicons name="camera-outline" size={18} color={t.accent} />
-              <Text style={[s.medicineText, { color: t.accent }]}>처방전 촬영 · ChatGPT 분석</Text>
+              <Text style={[s.medicineText, { color: t.accent }]}>{medical ? "Rx photo · ChatGPT" : "처방전 촬영 · ChatGPT 분석"}</Text>
             </Pressable>
           </View>
           </>}
@@ -605,6 +605,7 @@ export default function PatientNoteScreen(p: Props) {
         <MemoAttachments
           key={p.activePatientId}
           isDark={isDark}
+          medical={medical}
           attachments={form.attachments}
           onAppend={p.onAppend}
           onRemove={p.onRemoveAttachment}
@@ -621,7 +622,7 @@ export default function PatientNoteScreen(p: Props) {
           ]}
         >
           <Ionicons name="chatbubble-ellipses-outline" size={18} color={t.accent} />
-          <Text style={[s.medicineText, { color: t.accent }]}>문자로 보내기</Text>
+          <Text style={[s.medicineText, { color: t.accent }]}>{medical ? "Send SMS" : "문자로 보내기"}</Text>
         </Pressable>
       </View>}
       <MedicineBagAnalysis

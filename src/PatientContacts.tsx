@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ClinicalInput } from "./ClinicalControls";
 import { NoteModal } from "./NoteDialogs";
 import { clinicalTheme, scrim } from "./clinicalTheme";
 import { formatPhoneNumber } from "./phoneNumber";
-import { terms } from "./terms";
+import { relationTerm, terms } from "./terms";
 import { TYPE, makeStyles, useType } from "./design";
 
 export const GUARDIAN_RELATIONS = [
@@ -97,7 +97,7 @@ export default function PatientContacts({
           <Text style={{ ...labelStyle, color: t.accent }}>{L.guardian} ›</Text>
           {!!(form.guardianRelation || form.guardianName) && (
             <Text numberOfLines={1} style={[rows.caption, { color: t.muted }]}>
-              {[form.guardianRelation, form.guardianName].filter(Boolean).join(" · ")}
+              {[relationTerm(form.guardianRelation, medical), form.guardianName].filter(Boolean).join(" · ")}
             </Text>
           )}
         </Pressable>
@@ -114,7 +114,7 @@ export default function PatientContacts({
         />
       </View>
       <NoteModal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[sheet.backdrop, { backgroundColor: scrim("modal", isDark) }]}>
+        <KeyboardAvoidingView behavior="padding" style={[sheet.backdrop, { backgroundColor: scrim("modal", isDark) }]}>
           <Pressable accessibilityLabel="보호자 정보 취소" style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
           <SafeAreaView edges={["bottom"]} style={[sheet.body, { backgroundColor: t.surface }]}>
             <View style={[sheet.grabber, { backgroundColor: t.border }]} />
@@ -131,7 +131,7 @@ export default function PatientContacts({
               >
                 <Ionicons name="trash-outline" size={18} color={t.danger} />
               </Pressable>
-              <Text style={[sheet.title, { color: t.ink }]}>보호자 정보</Text>
+              <Text style={[sheet.title, { color: t.ink }]}>{medical ? "Guardian" : "보호자 정보"}</Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="적용"
@@ -145,7 +145,7 @@ export default function PatientContacts({
                 <Ionicons name="checkmark" size={20} color={t.surface} />
               </Pressable>
             </View>
-            <Text style={[labelStyle, sheet.label]}>환자와의 관계</Text>
+            <Text style={[labelStyle, sheet.label]}>{medical ? "Relationship" : "환자와의 관계"}</Text>
             <View style={sheet.chips}>
               {GUARDIAN_RELATIONS.map((item) => (
                 <Pressable
@@ -162,7 +162,7 @@ export default function PatientContacts({
                       fontFamily: relation === item ? "Pretendard-SemiBold" : "Pretendard-Regular",
                     }}
                   >
-                    {item}
+                    {relationTerm(item, medical)}
                   </Text>
                 </Pressable>
               ))}
@@ -175,7 +175,7 @@ export default function PatientContacts({
                   onChangeText={setCustom}
                   maxLength={20}
                   autoFocus
-                  placeholder="관계 직접 입력 (예: 조카, 이웃)"
+                  placeholder={medical ? "Type relationship" : "관계 직접 입력 (예: 조카, 이웃)"}
                   accessibilityLabel="보호자 관계 직접 입력"
                   style={{ paddingRight: 48 }}
                 />
@@ -186,14 +186,14 @@ export default function PatientContacts({
                 )}
               </View>
             )}
-            <Text style={[labelStyle, sheet.label]}>이름 (선택)</Text>
+            <Text style={[labelStyle, sheet.label]}>{medical ? "Name (optional)" : "이름 (선택)"}</Text>
             <View>
               <ClinicalInput
                 isDark={isDark}
                 value={name}
                 onChangeText={setName}
                 maxLength={60}
-                placeholder="이름 입력"
+                placeholder={medical ? "Name" : "이름 입력"}
                 accessibilityLabel="보호자 이름 입력"
                 style={{ paddingRight: 48 }}
               />

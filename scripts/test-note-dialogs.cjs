@@ -51,6 +51,11 @@ function harness(file, { os = "android" } = {}) {
       new Function("require", "module", "exports", ts.transpileModule(read("src/design.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(ref => ref === "react" ? React : ref === "react-native" ? { StyleSheet: { create: x => x } } : undefined, m, m.exports);
       return m.exports;
     }
+    if (name === "./privacyNotice") {
+      const m = { exports: {} };
+      new Function("module", "exports", ts.transpileModule(read("src/privacyNotice.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(m, m.exports);
+      return m.exports;
+    }
     if (name === "./controlGestures") {
       const m = { exports: {} };
       new Function("module", "exports", ts.transpileModule(read("src/controlGestures.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(m, m.exports);
@@ -216,7 +221,7 @@ test("memo and app use central dialogs, not the native Alert import", () => {
   const app = read("App.tsx");
   assert.match(app, /<NoteDialogProvider>/);
   assert.match(app, /<NoteDialogHost isDark=\{isDark\}/);
-  assert.equal((read("src/SettingsScreen.tsx").match(/<SquishThemeSwitch\b/g) || []).length, 4, "settings: device theme, dark mode, wheel picker and medical terms");
+  assert.equal((read("src/SettingsScreen.tsx").match(/<SquishThemeSwitch\b/g) || []).length, 2, "settings: dark mode and wheel picker");
   assert.doesNotMatch(app, /text: isDark \? "라이트 모드로 변경"/);
   assert.doesNotMatch(read("src/SquishThemeSwitch.tsx"), /Ionicons|sunny|moon/);
   assert.doesNotMatch(read("src/SquishThemeSwitch.tsx"), /useNativeDriver: true/);
@@ -293,12 +298,22 @@ test("the ⋯ menu shows only on the record tabs and uses the same popover on bo
 });
 test("Squish toggles follow the surface: light mode never shows a white 'on' track on a white panel", () => {
   const h = harness("src/SquishThemeSwitch.tsx");
-  const { SQUISH_LIGHT_COLORS, SQUISH_SWITCH_CONFIG } = h.exports;
+  const { SQUISH_LIGHT_COLORS, SQUISH_DARK_COLORS, SQUISH_SWITCH_CONFIG } = h.exports;
+  const luminance = hex => {
+    const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(c => c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a, b) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+  // The settings rows sit on clinicalTheme().field: #26272B dark, #F3F3F1 light.
+  assert.ok(contrast(SQUISH_DARK_COLORS.trackColor, "#26272B") >= 1.6, "dark off track stands out from the row");
+  assert.ok(contrast(SQUISH_LIGHT_COLORS.trackColor, "#F3F3F1") >= 1.5, "light off track stands out from the row");
+  assert.ok(contrast(SQUISH_DARK_COLORS.thumbColor, SQUISH_DARK_COLORS.trackColor) >= 2.5);
   assert.notEqual(SQUISH_LIGHT_COLORS.trackOnColor.toLowerCase(), "#f5f5f5");
   assert.notEqual(SQUISH_LIGHT_COLORS.trackOnColor, SQUISH_LIGHT_COLORS.thumbOnColor);
   assert.equal(SQUISH_SWITCH_CONFIG.trackOnColor, "#f5f5f5", "dark reference colours are unchanged");
   const source = read("src/SquishThemeSwitch.tsx");
-  assert.match(source, /const palette = isDark \? config : SQUISH_LIGHT_COLORS/);
+  assert.match(source, /const palette = isDark \? SQUISH_DARK_COLORS : SQUISH_LIGHT_COLORS/);
+  assert.match(source, /borderColor: palette\.outline/);
   assert.match(source, /outputRange: \[palette.trackColor, palette.trackOnColor\]/);
   for (const file of ["src/SettingsScreen.tsx"]) {
     const tags = read(file).match(/<SquishThemeSwitch[\s\S]*?\/>/g) || [];
@@ -343,21 +358,35 @@ test("the app opens on the patient tab and the header carries no affiliation", (
 
 test("settings preserves all device preference callbacks and affiliation editing", () => {
   const h=harness("src/SettingsScreen.tsx"), calls=[];
-  const props={isDark:true,useWheelPicker:false,wheelPreferenceReady:false,medicalTerms:true,followSystemTheme:false,
-    onFollowSystemThemeChange:value=>calls.push(["system",value]),
+  const props={isDark:true,useWheelPicker:false,wheelPreferenceReady:false,medicalTerms:true,
     onThemeChange:value=>calls.push(["theme",value]), onWheelChange:value=>calls.push(["wheel",value]), onMedicalTermsChange:value=>calls.push(["terms",value]), onAffiliationSaved:value=>calls.push(["sender",value])};
   const root=h.render(h.exports.default,props);
   const switches=find(root,"Switch");
-  assert.equal(switches.length,4);
-  assert.deepEqual(switches.map(node=>node.props.checked),[false,true,false,true]);
-  assert.equal(switches[2].props.disabled,true);
-  switches[0].props.onChange(true);
-  switches[1].props.onChange(false);
-  switches[3].props.onChange(false);
+  assert.equal(switches.length,2,"dark mode and wheel picker; language is a selector");
+  assert.deepEqual(switches.map(node=>node.props.checked),[true,false]);
+  assert.equal(switches[1].props.disabled,true);
+  switches[0].props.onChange(false);
+  const [language, sizes]=find(root,"RecordTabs");
+  assert.deepEqual(language.props.options.map(option=>option.label),["한글","English"]);
+  assert.equal(language.props.selectedId,"en");
+  language.props.onSelect("ko");
   find(root,"Affiliation")[0].props.onSaved({affiliation:"변경"});
-  assert.deepEqual(calls,[["system",true],["theme",false],["terms",false],["sender",{affiliation:"변경"}]]);
-  const sizes=find(root,"RecordTabs");
-  assert.equal(sizes.length,1);
-  assert.deepEqual(sizes[0].props.options.map(option=>option.label),["작게","보통","크게"]);
-  assert.equal(sizes[0].props.selectedId,"medium");
+  assert.deepEqual(calls,[["theme",false],["terms",false],["sender",{affiliation:"변경"}]]);
+  assert.equal(find(root,"Affiliation")[0].props.english,true);
+  assert.deepEqual(sizes.props.options.map(option=>option.label),["Small","Medium","Large"],"English mode labels the settings too");
+  assert.equal(sizes.props.selectedId,"medium");
+});
+
+test("settings ends with a businesslike privacy policy and usage notice that match the app's behaviour", () => {
+  const m = { exports: {} };
+  new Function("module", "exports", ts.transpileModule(read("src/privacyNotice.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(m, m.exports);
+  const { PRIVACY_NOTICE, USAGE_NOTICE } = m.exports;
+  assert.deepEqual(PRIVACY_NOTICE.map(item => item.title), ["처리 항목", "처리 목적", "보관 위치", "보관 기간 및 파기", "외부 전송", "사용자 유의사항"]);
+  assert.match(PRIVACY_NOTICE.find(item => item.title === "보관 기간 및 파기").body, /등록 후 24시간 경과 시/);
+  assert.match(PRIVACY_NOTICE.find(item => item.title === "보관 위치").body, /서버로 전송하지 않음/);
+  assert.match(USAGE_NOTICE.find(item => item.title === "처방전 분석").body, /참고용/);
+  for (const item of [...PRIVACY_NOTICE, ...USAGE_NOTICE]) assert.doesNotMatch(item.body, /해 주세요|합니다|됩니다/, "개조식 문체");
+  const settings = read("src/SettingsScreen.tsx");
+  assert.match(settings, /\["개인정보 처리방침", PRIVACY_NOTICE\], \["이용 안내", USAGE_NOTICE\]/);
+  assert.doesNotMatch(settings, />기록 보관</);
 });

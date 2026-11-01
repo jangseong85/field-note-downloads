@@ -53,10 +53,13 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; back
   justify-content: center;
   text-align: center; color: #e7e8e9;
   font-family: "Field Barlow", Arial, sans-serif;
-  font-size: clamp(32px, 9.6cqw, 48px); font-weight: 700; line-height: 1.15; letter-spacing: 0.035em;
+  font-size: clamp(30px, 9.2cqw, 46px); font-weight: 700; line-height: 1.15; letter-spacing: 0.035em;
   animation: scene-in 600ms ease-out 450ms both;
 }
 .brand-type { margin: 0; font: inherit; letter-spacing: inherit; white-space: nowrap; }
+/* "119 | FIELD NOTE": the number takes the light-bar red, the bar is a quiet divider. */
+.brand-119 { color: #ff2d45; }
+.brand-bar { margin: 0 0.32em; color: rgba(231,232,233,.45); font-weight: 400; }
 @keyframes scene-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .art-frame > div, .splash-content, .wordmark { animation: none; } }
 @media (prefers-reduced-motion: reduce) {

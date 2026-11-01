@@ -62,12 +62,15 @@ type PendingMedia = {
 export default function MemoAttachments({
   attachments,
   isDark,
+  medical = false,
   onAppend,
   onRemove,
   onBusyChange,
 }: {
   attachments: MemoAttachment[];
   isDark: boolean;
+  /** English screen mode. */
+  medical?: boolean;
   onAppend: (attachment: MemoAttachment) => Promise<void>;
   /** Removes the attachment from the saved record, then deletes its file. */
   onRemove: (attachment: MemoAttachment) => Promise<void>;
@@ -385,7 +388,7 @@ export default function MemoAttachments({
   return (
     <View>
       <View style={styles.toolsHeading}>
-        <Text style={[styles.toolsTitle, { color: t.muted }]}>첨부</Text>
+        <Text style={[styles.toolsTitle, { color: t.muted }]}>{medical ? "Attachments" : "첨부"}</Text>
         {attachments.length > 0 && (
           <Text style={[styles.caption, { color: t.muted }]}>
             {attachments.length}개
@@ -430,10 +433,10 @@ export default function MemoAttachments({
               ]}
             >
               {audioNeedsRetry
-                ? "저장 재시도"
+                ? medical ? "Retry save" : "저장 재시도"
                 : recording
-                  ? "녹취 중지"
-                  : "녹취"}
+                  ? medical ? "Stop" : "녹취 중지"
+                  : medical ? "Record" : "녹취"}
             </Text>
             {recording && (
               <Text
@@ -460,7 +463,7 @@ export default function MemoAttachments({
             <Ionicons name="camera-outline" size={21} color={t.ink} />
           </View>
           <View style={styles.toolCopy}>
-            <Text style={[styles.actionText, { color: t.ink }]}>사진</Text>
+            <Text style={[styles.actionText, { color: t.ink }]}>{medical ? "Photo" : "사진"}</Text>
           </View>
         </Pressable>
       </View>
@@ -489,7 +492,7 @@ export default function MemoAttachments({
       )}
       {showPhotos && (
         <>
-          <Text style={[styles.groupLabel, { color: t.muted }]}>사진 {photos.length}</Text>
+          <Text style={[styles.groupLabel, { color: t.muted }]}>{medical ? "Photos" : "사진"} {photos.length}</Text>
           <View style={styles.photoGrid}>
             {photos.map((item, index) => (
               <Pressable
@@ -512,7 +515,7 @@ export default function MemoAttachments({
       )}
       {showRecordings && (
         <>
-          <Text style={[styles.groupLabel, { color: t.muted }]}>녹취 {recordings.length}</Text>
+          <Text style={[styles.groupLabel, { color: t.muted }]}>{medical ? "Audio" : "녹취"} {recordings.length}</Text>
           {recordings.map((item, index) => {
             const active = playingId === item.id;
             const total = active && playback.duration > 0 ? playback.duration : item.duration ?? 0;
@@ -580,7 +583,7 @@ export default function MemoAttachments({
             >
               <Ionicons name="close" size={26} color="#FFFFFF" />
             </Pressable>
-            <Text style={styles.modalTitle}>환자 사진</Text>
+            <Text style={styles.modalTitle}>{medical ? "Patient photo" : "환자 사진"}</Text>
             <View style={styles.close} />
           </View>
           {cameraVisible && (

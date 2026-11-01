@@ -9,7 +9,7 @@ import { formatTimestamp } from "./src/dateTime";
 import { Frame } from "./src/cameraCrop";
 import PatientNoteScreen from "./src/PatientNoteScreen";
 import SettingsScreen from "./src/SettingsScreen";
-import { NAVIGATION_ITEMS, navigationItemHeight as compactNavigationItemHeight, type AppTab } from "./src/navigation";
+import { NAVIGATION_ITEMS, NAVIGATION_LABELS_EN, navigationItemHeight as compactNavigationItemHeight, type AppTab } from "./src/navigation";
 import { loadSender } from "./src/RecordAffiliation";
 import type { SenderInfo } from "./src/smsMessage";
 import RecordOptionsPopover, { PopoverAnchor } from "./src/RecordOptionsPopover";
@@ -407,7 +407,7 @@ function FieldNoteApp() {
       const viewport = { ...cameraLayout };
       const guide = { ...guideFrame, y: guideTop + guideFrame.y };
       if (!viewport.width || !viewport.height || !guide.width || !guide.height) throw new Error("촬영 가이드가 준비되지 않았습니다. 잠시 후 다시 촬영해 주세요.");
-      // The phone's own shutter click plays on press; expo-camera's beep is only the fallback without the module.
+      // The soft shutter click plays on press; expo-camera's beep is only the fallback without the module.
       ShutterSound?.play();
       const photo = await cameraRef.current?.takePictureAsync({ quality: 1, skipProcessing: false, shutterSound: !ShutterSound });
       if (!photo?.uri) return;
@@ -487,7 +487,7 @@ function FieldNoteApp() {
               <View style={styles.noteAppHeader}>
                 <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
                   <View style={styles.noteBrand}><Text style={[styles.noteBrandNumber, { color: clinicalTheme(isDark).brand }]}>119</Text><Text style={[styles.noteBrandText, { color: clinicalTheme(isDark).muted }]}>FIELD NOTE</Text></View>
-                  {activeTab === "settings" && <Text style={[styles.noteTitle, { color: clinicalTheme(isDark).ink }]}>설정</Text>}
+                  {activeTab === "settings" && <Text style={[styles.noteTitle, { color: clinicalTheme(isDark).ink }]}>{medicalTerms ? "Settings" : "설정"}</Text>}
                 </View>
                 {activeTab !== "settings" && <View style={styles.noteHeaderActions}>
                   <Pressable ref={optionsButtonRef} accessibilityRole="button" accessibilityLabel="메모 메뉴" onPress={openOptions} style={[styles.noteHeaderMenu, { borderRadius: 22, backgroundColor: clinicalTheme(isDark).surface, borderWidth: StyleSheet.hairlineWidth, borderColor: clinicalTheme(isDark).border }]}><Ionicons name="ellipsis-horizontal" size={20} color={clinicalTheme(isDark).ink} /></Pressable>
@@ -517,7 +517,6 @@ function FieldNoteApp() {
               ) : (
                 <SettingsScreen isDark={isDark} useWheelPicker={useWheelPicker} wheelPreferenceReady={wheelPreferenceReady}
                   medicalTerms={medicalTerms} onThemeChange={changeTheme}
-                  followSystemTheme={themeMode === "system"} onFollowSystemThemeChange={follow => changeThemeMode(follow ? "system" : isDark ? "dark" : "light")}
                   onWheelChange={value => void changeWheelPreference(value)}
                   onMedicalTermsChange={value => void changeMedicalTerms(value)} onAffiliationSaved={setSender} />
               )}
@@ -527,6 +526,7 @@ function FieldNoteApp() {
             itemHeight={navigationItemHeight}
             activeTab={activeTab}
             isDark={isDark}
+            english={medicalTerms}
             onSelect={navigate}
           />
           <HandwritingModal
@@ -629,6 +629,8 @@ function FieldNoteApp() {
               }}
               onError={finishIntro}
             />
+            {/* Tapping anywhere skips the intro; the WebView itself takes no input. */}
+            <Pressable accessibilityRole="button" accessibilityLabel="인트로 건너뛰기" onPress={finishIntro} style={StyleSheet.absoluteFill} />
           </Animated.View>
         )}
       </View>
@@ -637,15 +639,16 @@ function FieldNoteApp() {
 }
 
 function BottomNavigation({
-  activeTab, isDark, onSelect, itemHeight,
+  activeTab, isDark, english, onSelect, itemHeight,
 }: {
   itemHeight: number;
   activeTab: AppTab;
   isDark: boolean;
+  english: boolean;
   onSelect: (tab: AppTab) => void;
 }) {
   const styles = useStyles();
-  const tabs = NAVIGATION_ITEMS;
+  const tabs = NAVIGATION_ITEMS.map(item => (english ? { ...item, label: NAVIGATION_LABELS_EN[item.id] } : item));
   // Keep the floating capsule above the home indicator / system navigation bar.
   const t = clinicalTheme(isDark);
   const insets = useSafeAreaInsets();

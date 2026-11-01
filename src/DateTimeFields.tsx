@@ -22,6 +22,7 @@ import { ClinicalField, ClinicalInput } from "./ClinicalControls";
 import DateTimeWheelPicker from "./DateTimeWheelPicker";
 import { clinicalTheme } from "./clinicalTheme";
 import { TYPE, makeStyles } from "./design";
+import { weekdayTerm } from "./terms";
 
 export default function DateTimeFields({
   title,
@@ -92,7 +93,7 @@ export default function DateTimeFields({
                 { color: t.muted, opacity: date || time ? 1 : 0.4 },
               ]}
             >
-              초기화
+              {medical ? "Reset" : "초기화"}
             </Text>
           </Pressable>
           <Pressable
@@ -105,7 +106,7 @@ export default function DateTimeFields({
             }}
           >
             <Ionicons name="time-outline" size={18} color={t.accent} />
-            <Text style={[styles.nowText, { color: t.accent }]}>현재</Text>
+            <Text style={[styles.nowText, { color: t.accent }]}>{medical ? "Now" : "현재"}</Text>
           </Pressable>
         </View>
       </View>
@@ -141,7 +142,7 @@ export default function DateTimeFields({
                     { color: t.ink, borderLeftColor: t.border },
                   ]}
                 >
-                  {weekday ?? "요일"}
+                  {weekday ? weekdayTerm(weekday, medical) : medical ? "Day" : "요일"}
                 </Text>
               </ClinicalField>
             </Pressable>
@@ -191,7 +192,7 @@ export default function DateTimeFields({
                 { color: t.ink, borderLeftColor: t.border },
               ]}
             >
-              {weekday ?? "요일"}
+              {weekday ? weekdayTerm(weekday, medical) : medical ? "Day" : "요일"}
             </Text>
           </ClinicalField>
           <ClinicalField

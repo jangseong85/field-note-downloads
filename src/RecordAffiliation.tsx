@@ -24,7 +24,7 @@ export async function loadSender(): Promise<SenderInfo> {
 }
 
 /** Device-level setting, deliberately separate from patient/reset storage. */
-export default function RecordAffiliation({ isDark, onSaved }: { isDark: boolean; onSaved: (sender: SenderInfo) => void }) {
+export default function RecordAffiliation({ isDark, onSaved, english = false }: { isDark: boolean; onSaved: (sender: SenderInfo) => void; english?: boolean }) {
   const type = useType();
   const t = clinicalTheme(isDark);
   const alert = useNoteAlert();
@@ -60,18 +60,18 @@ export default function RecordAffiliation({ isDark, onSaved }: { isDark: boolean
     setSender((previous) => ({ ...previous, [key]: value }));
   return (
     <View style={{ gap: 8 }}>
-      <Text style={labelStyle}>소속</Text>
+      <Text style={labelStyle}>{english ? "Unit" : "소속"}</Text>
       <ClinicalInput
         isDark={isDark}
         value={sender.affiliation}
         onChangeText={update("affiliation")}
         editable={ready && !saving}
         maxLength={100}
-        placeholder="소속 입력"
+        placeholder={english ? "Unit" : "소속 입력"}
         accessibilityLabel="소속 입력"
         autoCorrect={false}
       />
-      <Text style={labelStyle}>계급 · 성명</Text>
+      <Text style={labelStyle}>{english ? "Rank · Name" : "계급 · 성명"}</Text>
       <View style={{ flexDirection: "row", gap: 8 }}>
         <ClinicalInput
           isDark={isDark}
@@ -79,7 +79,7 @@ export default function RecordAffiliation({ isDark, onSaved }: { isDark: boolean
           onChangeText={update("rank")}
           editable={ready && !saving}
           maxLength={20}
-          placeholder="계급"
+          placeholder={english ? "Rank" : "계급"}
           accessibilityLabel="대원 계급 입력"
           autoCorrect={false}
           style={{ flex: 2 }}
@@ -90,7 +90,7 @@ export default function RecordAffiliation({ isDark, onSaved }: { isDark: boolean
           onChangeText={update("name")}
           editable={ready && !saving}
           maxLength={30}
-          placeholder="성명"
+          placeholder={english ? "Name" : "성명"}
           accessibilityLabel="대원 성명 입력"
           autoCorrect={false}
           style={{ flex: 3 }}
@@ -135,7 +135,7 @@ export default function RecordAffiliation({ isDark, onSaved }: { isDark: boolean
             fontSize: type.sub,
           }}
         >
-          {saving ? "저장 중" : "저장"}
+          {saving ? (english ? "Saving" : "저장 중") : english ? "Save" : "저장"}
         </Text>
       </Pressable>
     </View>

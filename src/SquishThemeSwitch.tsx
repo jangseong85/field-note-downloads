@@ -22,12 +22,24 @@ export const SQUISH_SWITCH_CONFIG = {
   hoverScale: 1.035,
   colorDuration: 320,
 } as const;
-/** The reference colours are for dark surfaces; light surfaces mirror them so the "on" track never vanishes. */
+/**
+ * The reference "off" track (#27272a) is the same tone as the dark settings row (#26272B), so only the
+ * thumb showed. Both palettes keep the off track and its outline clearly apart from the row behind it.
+ */
+export const SQUISH_DARK_COLORS = {
+  trackColor: "#4a4b52",
+  trackOnColor: "#f5f5f5",
+  thumbColor: "#a1a1aa",
+  thumbOnColor: "#27272a",
+  outline: "rgba(255,255,255,0.18)",
+} as const;
+/** Light surfaces mirror the reference so the "on" track never vanishes on a white panel. */
 export const SQUISH_LIGHT_COLORS = {
-  trackColor: "#d4d4d8",
+  trackColor: "#c4c4c9",
   trackOnColor: "#27272a",
   thumbColor: "#ffffff",
   thumbOnColor: "#fafafa",
+  outline: "rgba(0,0,0,0.10)",
 } as const;
 const config = SQUISH_SWITCH_CONFIG;
 // Colour and transform share the thumb view: keep their entire graph JS-driven.
@@ -53,7 +65,7 @@ export default function SquishThemeSwitch({
 }) {
   const styles = useStyles();
   const [reduceMotion, setReduceMotion] = useState(true);
-  const palette = isDark ? config : SQUISH_LIGHT_COLORS;
+  const palette = isDark ? SQUISH_DARK_COLORS : SQUISH_LIGHT_COLORS;
   const x = useRef(new Animated.Value(checked ? TRAVEL : 0)).current;
   const stretch = useRef(new Animated.Value(1)).current;
   const hover = useRef(new Animated.Value(1)).current;
@@ -241,6 +253,7 @@ export default function SquishThemeSwitch({
         style={[
           styles.track,
           {
+            borderColor: palette.outline,
             backgroundColor: color.interpolate({
               inputRange: [0, 1],
               outputRange: [palette.trackColor, palette.trackOnColor],
@@ -282,8 +295,10 @@ const useStyles = makeStyles({
     width: config.width,
     height: config.height,
     borderRadius: config.radius,
+    borderWidth: 1,
   },
-  thumbPosition: { position: "absolute", left: INSET, top: INSET },
+  // The 1pt outline sits inside the track, so the thumb offset drops by the same amount.
+  thumbPosition: { position: "absolute", left: INSET - 1, top: INSET - 1 },
   thumb: {
     width: THUMB,
     height: THUMB,

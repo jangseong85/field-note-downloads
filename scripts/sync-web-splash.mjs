@@ -32,24 +32,26 @@ if (!scriptPath || !stylePath) {
   throw new Error("빌드된 스플래시의 JavaScript 또는 CSS 경로를 찾지 못했습니다.");
 }
 
-const embedPng = (filename) => {
+// The scene is a JPEG (no transparency): about 320 KB instead of the 1.7 MB PNG.
+const embedJpeg = (filename) => {
   const image = readFileSync(resolve(source, filename)).toString("base64");
-  return `data:image/png;base64,${image}`;
+  return `data:image/jpeg;base64,${image}`;
 };
 
 const script = readFileSync(resolve(source, scriptPath), "utf8")
-  .replaceAll("./field24-scene-v3.png", embedPng("field24-scene-v3.png"));
-const scriptDataUrl = `data:text/javascript;base64,${Buffer.from(script).toString("base64")}`;
+  .replaceAll("./field24-scene-v3.jpg", embedJpeg("field24-scene-v3.jpg"));
 const style = readFileSync(resolve(source, stylePath), "utf8").replaceAll(
   "../field-barlow-bold.woff2",
   `data:font/woff2;base64,${readFileSync(resolve(source, "field-barlow-bold.woff2")).toString("base64")}`,
 );
 const standaloneHtml = html
   .replace(/<script[^>]+src="\.\/.*?"[^>]*><\/script>/, "")
-  .replace(/<link[^>]+href="\.\/.*?"[^>]*>/, `<style>${style}</style>`)
+  .replace(/<link[^>]+href="\.\/.*?"[^>]*>/, () => `<style>${style}</style>`)
   .replace(
     "</body>",
-    `<script type="module" src="${scriptDataUrl}"></script></body>`,
+    // Inline the module as text: wrapping it in another base64 data URL grew the page by a third.
+    // A function replacement keeps "$'" and "$&" inside the bundle from being read as patterns.
+    () => `<script type="module">${script.replace(/<\/script/gi, "<\\/script")}</script></body>`,
   );
 
 writeFileSync(resolve(target, "index.html"), standaloneHtml);

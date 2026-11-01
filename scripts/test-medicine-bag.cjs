@@ -58,12 +58,13 @@ test("long edge cap and stroke paths", () => {
   assert.equal(strokePath([{ x: 1, y: 2 }, { x: 3, y: 4 }]), "M1.0 2.0 L3.0 4.0");
 });
 
-test("Android hands the image and prompt only to the ChatGPT app", () => {
+test("Android hands the images and prompt only to the ChatGPT app", () => {
   const kotlin = read("modules/chatgpt-share/android/src/main/java/expo/modules/chatgptshare/ChatGptShareModule.kt");
   assert.match(kotlin, new RegExp(`"${CHATGPT_PACKAGE.replace(/\./g, "\\.")}"`));
   assert.match(kotlin, /setPackage\(CHATGPT_PACKAGE\)/);
-  assert.match(kotlin, /Intent\.ACTION_SEND\)/);
-  assert.match(kotlin, /EXTRA_STREAM/);
+  assert.match(kotlin, /if \(uris\.size > 1\) Intent\.ACTION_SEND_MULTIPLE else Intent\.ACTION_SEND/);
+  assert.match(kotlin, /putParcelableArrayListExtra\(Intent\.EXTRA_STREAM, ArrayList\(uris\)\)/);
+  assert.match(kotlin, /uris\.drop\(1\)\.forEach \{ addItem\(ClipData\.Item\(it\)\) \}/, "every image gets the read grant");
   assert.match(kotlin, /EXTRA_TEXT, prompt/);
   assert.match(kotlin, /FLAG_GRANT_READ_URI_PERMISSION/);
   assert.match(read("modules/chatgpt-share/android/src/main/AndroidManifest.xml"), /<package android:name="com\.openai\.chatgpt" \/>/);
@@ -79,4 +80,14 @@ test("medicine-bag files are temporary and the sent copy is what the preview sho
   assert.match(read("src/medicineBagFiles.ts"), /cacheDirectory/);
   assert.match(read("App.tsx"), /useEffect\(\(\) => \{ void clearMedicineBagFiles\(\); \}, \[\]\)/);
   assert.match(read("src/PatientNoteScreen.tsx"), /<MedicineBagAnalysis\b/);
+});
+
+test("several prescriptions: album picks up to the limit, each is cropped and reviewed, all go in one message", () => {
+  const screen = read("src/MedicineBagAnalysis.tsx");
+  assert.match(screen, /export const MAX_PRESCRIPTION_PHOTOS = 5;/);
+  assert.match(screen, /const limit = ChatGptShare \? MAX_PRESCRIPTION_PHOTOS : 1;/, "the iOS share sheet takes one image");
+  assert.match(screen, /allowsMultipleSelection: room > 1,\s+selectionLimit: room,/);
+  assert.match(screen, /const send = \(\) => share\(async \(\) => \[\.\.\.ready, await finishReview\(\)\]\);/);
+  assert.match(screen, /await ChatGptShare\.share\(uris, MEDICINE_BAG_PROMPT\)/);
+  assert.match(MEDICINE_BAG_PROMPT, /여러 장이면 모든 사진의 약을 합쳐 한 번에 정리하고, 같은 약은 한 번만 쓴다/);
 });

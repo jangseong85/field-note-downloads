@@ -17,7 +17,7 @@ export const MEDICINE_DEPARTMENTS = [
  * Drugs are grouped by department with the likely condition beside each one, so the history reads at a glance.
  */
 export const MEDICINE_BAG_PROMPT = `[구급 현장 처방전·약 봉투 분석]
-첨부 사진은 환자 처방전 또는 약 봉투의 약 이름 부분이다. 아래 출력 형식 그대로만 답한다.
+첨부 사진은 환자 처방전 또는 약 봉투의 약 이름 부분이다. 여러 장이면 모든 사진의 약을 합쳐 한 번에 정리하고, 같은 약은 한 번만 쓴다. 아래 출력 형식 그대로만 답한다.
 
 규칙
 - 형식 밖의 문장(인사말, 서론, 요약, 주의 문구, 추가 질문, 진료 권고)은 쓰지 않는다.

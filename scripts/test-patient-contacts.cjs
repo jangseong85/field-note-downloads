@@ -117,3 +117,21 @@ test("기타 opens a typed relation that is saved as written and comes back on r
   assert.equal(chip(all, "배우자").props.accessibilityState.selected, true);
   assert.equal(typed(all), undefined);
 });
+test("the guardian sheet rises above the keyboard on Android too, so the name field stays visible", () => {
+  const source = read("src/PatientContacts.tsx");
+  assert.match(source, /<KeyboardAvoidingView behavior="padding" style=\{\[sheet\.backdrop/);
+  assert.doesNotMatch(source, /Platform\.OS === "ios" \? "padding" : undefined/);
+});
+test("English mode labels relations, but the saved value stays Korean", () => {
+  const render = harness();
+  const changes = [];
+  const props = { isDark: false, medical: true, form: { patientPhone: "", guardianPhone: "", guardianName: "홍길동", guardianRelation: "배우자" }, onUpdate: (...args) => changes.push(args) };
+  let all = nodes(render(props));
+  assert.ok(all.some(n => n.type === "Text" && [].concat(n.props.children).join("") === "Spouse · 홍길동"));
+  all.find(n => n.props.accessibilityLabel === "보호자 관계와 이름 설정").props.onPress();
+  all = nodes(render(props));
+  const chip = all.find(n => n.props.accessibilityRole === "radio" && n.props.accessibilityState.selected);
+  assert.ok(nodes(chip).some(c => c.type === "Text" && [].concat(c.props.children).join("") === "Spouse"));
+  all.find(n => n.type === "Button" && n.props.accessibilityLabel === "적용").props.onPress();
+  assert.deepEqual(changes[0], ["guardianRelation", "배우자"]);
+});
