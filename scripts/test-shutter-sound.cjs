@@ -25,5 +25,5 @@ test("the splash intro can be skipped with a tap and the built page stays light"
   const sync = read("scripts/sync-web-splash.mjs");
   assert.match(sync, /\(\) => `<script type="module">/, "function replacement keeps $' in the bundle from duplicating the page");
   assert.match(read("web-splash/src/App.tsx"), /field24-scene-v3\.jpg/);
-  assert.match(read("web-splash/src/App.tsx"), /<span className="brand-119">119<\/span><span className="brand-bar" aria-hidden="true" \/>FIELD NOTE/);
+  assert.match(read("web-splash/src/App.tsx"), /<span className="brand-119">119<\/span><span className="brand-bar" aria-hidden="true">\|<\/span>FIELD NOTE/);
 });

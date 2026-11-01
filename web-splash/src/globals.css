@@ -53,21 +53,13 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; back
   justify-content: center;
   text-align: center; color: #e7e8e9;
   font-family: "Field Barlow", Arial, sans-serif;
-  font-size: clamp(36px, 11.6cqw, 58px); font-weight: 700; line-height: 1.15; letter-spacing: 0.012em;
-  color: #f4f5f6; text-shadow: 0 2px 14px rgba(0,0,0,.75);
+  font-size: clamp(30px, 9.2cqw, 46px); font-weight: 700; line-height: 1.15; letter-spacing: 0.035em;
   animation: scene-in 600ms ease-out 450ms both;
 }
 .brand-type { margin: 0; font: inherit; letter-spacing: inherit; white-space: nowrap; }
-/* "119 | FIELD NOTE": the number glows like the light bar; the divider is a slanted red stroke. */
-.brand-119 {
-  color: #ff1f3d;
-  text-shadow: 0 0 4px rgba(255,60,80,.95), 0 0 14px rgba(255,0,48,.8), 0 0 32px rgba(255,0,48,.5), 0 0 60px rgba(255,0,48,.3);
-}
-.brand-bar {
-  display: inline-block; width: 0.09em; height: 0.8em; margin: 0 0.26em;
-  vertical-align: baseline; transform: translateY(0.22em) skewX(-12deg);
-  background: linear-gradient(#ff2d45, #a8001c); box-shadow: 0 0 10px rgba(255,0,48,.6);
-}
+/* "119 | FIELD NOTE": the number takes the light-bar red, the bar is a quiet divider. */
+.brand-119 { color: #ff2d45; }
+.brand-bar { margin: 0 0.32em; color: rgba(231,232,233,.45); font-weight: 400; }
 @keyframes scene-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .art-frame > div, .splash-content, .wordmark { animation: none; } }
 @media (prefers-reduced-motion: reduce) {

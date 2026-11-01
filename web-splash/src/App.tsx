@@ -35,7 +35,7 @@ export default function App() {
         >
           <section className="splash-content" aria-label="Field Note">
             <img className="scene" src={`${import.meta.env.BASE_URL}field24-scene-v3.jpg`} alt="붉은 경광등과 백색 전조등이 켜진 119 구급차" />
-            <div className="wordmark"><h1 className="brand-type"><span className="brand-119">119</span><span className="brand-bar" aria-hidden="true" />FIELD NOTE</h1></div>
+            <div className="wordmark"><h1 className="brand-type"><span className="brand-119">119</span><span className="brand-bar" aria-hidden="true">|</span>FIELD NOTE</h1></div>
           </section>
         </NeonReveal>}
         <div className="ignition-roof-wash" aria-hidden="true" />
