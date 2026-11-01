@@ -7,6 +7,8 @@ import WheelPicker, {
 } from "@quidone/react-native-wheel-picker";
 import { createWheelHold } from "./wheelMotion";
 import { clinicalTheme } from "./clinicalTheme";
+// Wheel rows have a fixed height, so wheel text uses the base roles without the app text size.
+import { TYPE } from "./design";
 const VirtualizedWheelPicker = withVirtualized(WheelPicker);
 
 // Keep the library's native-driven curved faces, adding our bounded hold gesture.
@@ -187,7 +189,7 @@ function NativeWheelColumn({
       <Text
         style={{
           color: t.muted,
-          fontSize: 13,
+          fontSize: TYPE.sub,
           textAlign: "center",
           fontFamily: "Pretendard-Medium",
         }}
@@ -239,7 +241,7 @@ function NativeWheelColumn({
           windowSize={7}
           itemTextStyle={{
             fontFamily: "Pretendard-Medium",
-            fontSize: 24,
+            fontSize: TYPE.numeric,
             color: t.ink,
             fontVariant: ["tabular-nums"],
           }}

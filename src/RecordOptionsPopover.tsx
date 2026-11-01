@@ -6,32 +6,18 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  View,
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { clinicalTheme, scrim } from "./clinicalTheme";
 import { NoteModal } from "./NoteDialogs";
-import RecordAffiliation from "./RecordAffiliation";
-import SquishThemeSwitch from "./SquishThemeSwitch";
-import type { SenderInfo } from "./smsMessage";
+import { TYPE, makeStyles } from "./design";
 
 export type PopoverAnchor = { x: number; y: number; width: number; height: number };
 type Props = {
   visible: boolean;
   isDark: boolean;
   anchor: PopoverAnchor | null;
-  affiliation: string;
-  senderRank?: string;
-  senderName?: string;
-  useWheelPicker: boolean;
-  wheelPreferenceReady: boolean;
-  medicalTerms: boolean;
-  onMedicalTermsChange: (enabled: boolean) => void;
-  showReset: boolean;
-  onThemeChange: (dark: boolean) => void;
-  onWheelChange: (enabled: boolean) => void;
-  onAffiliationSaved: (sender: SenderInfo) => void;
   onReset: () => void;
   onClose: () => void;
 };
@@ -47,11 +33,11 @@ export function popoverPosition(anchor: PopoverAnchor | null, screenWidth: numbe
   return { top: anchor.y + anchor.height + GAP, right, width };
 }
 
-/** iOS record options: a popover under the header ⋯ button with inline toggles. */
+/** Memo actions under the header ⋯ button. Preferences live only on the settings tab. */
 export default function RecordOptionsPopover(p: Props) {
+  const styles = useStyles();
   const t = clinicalTheme(p.isDark);
   const { width: screenWidth } = useWindowDimensions();
-  const [mode, setMode] = useState<"main" | "affiliation">("main");
   const [reduceMotion, setReduceMotion] = useState(false);
   const appear = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -65,14 +51,12 @@ export default function RecordOptionsPopover(p: Props) {
   }, []);
   useEffect(() => {
     if (!p.visible) return;
-    setMode("main");
     appear.setValue(reduceMotion ? 1 : 0);
     if (!reduceMotion)
       Animated.spring(appear, { toValue: 1, speed: 22, bounciness: 6, useNativeDriver: true }).start();
   }, [p.visible, reduceMotion, appear]);
   const position = popoverPosition(p.anchor, screenWidth);
   const panelColor = p.isDark ? "rgba(48,49,54,0.97)" : "rgba(250,249,247,0.98)";
-  const separator = { backgroundColor: t.separator };
   const reset = () => {
     p.onClose();
     p.onReset();
@@ -80,7 +64,7 @@ export default function RecordOptionsPopover(p: Props) {
 
   return (
     <NoteModal visible={p.visible} transparent animationType="fade" onRequestClose={p.onClose}>
-      <Pressable accessibilityLabel="기록 옵션 닫기" style={[StyleSheet.absoluteFill, { backgroundColor: scrim("popover", p.isDark) }]} onPress={p.onClose} />
+      <Pressable accessibilityLabel="메모 메뉴 닫기" style={[StyleSheet.absoluteFill, { backgroundColor: scrim("popover", p.isDark) }]} onPress={p.onClose} />
       <Animated.View
         accessibilityViewIsModal
         style={[
@@ -97,87 +81,19 @@ export default function RecordOptionsPopover(p: Props) {
           },
         ]}
       >
-        {mode === "main" ? (
-          <>
-            <View style={styles.row}>
-              <Text style={[styles.label, styles.grow, { color: t.ink }]}>다크 모드</Text>
-              <SquishThemeSwitch isDark={p.isDark} checked={p.isDark} onChange={p.onThemeChange} />
-            </View>
-            <View style={[styles.separator, separator]} />
-            <View style={styles.row}>
-              <View style={styles.labelBlock}>
-                <Text style={[styles.label, { color: t.ink }]}>휠 피커 사용</Text>
-                <Text style={[styles.caption, { color: t.muted }]}>
-                  {p.useWheelPicker ? "날짜·시각을 휠로 선택" : "숫자 직접 입력"}
-                </Text>
-              </View>
-              <SquishThemeSwitch
-                isDark={p.isDark}
-                accessibilityLabel="휠 피커 사용"
-                checked={p.useWheelPicker}
-                disabled={!p.wheelPreferenceReady}
-                onChange={p.onWheelChange}
-              />
-            </View>
-            <View style={[styles.separator, separator]} />
-            <View style={styles.row}>
-              <View style={styles.labelBlock}>
-                <Text style={[styles.label, { color: t.ink }]}>의학용어로 표시</Text>
-                <Text style={[styles.caption, { color: t.muted }]}>병력·검토사항을 HTN, DM처럼</Text>
-              </View>
-              <SquishThemeSwitch
-                isDark={p.isDark}
-                accessibilityLabel="의학용어로 표시"
-                checked={p.medicalTerms}
-                onChange={p.onMedicalTermsChange}
-              />
-            </View>            <View style={[styles.separator, separator]} />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="소속 설정"
-              onPress={() => setMode("affiliation")}
-              style={({ pressed }) => [styles.row, { opacity: pressed ? 0.6 : 1 }]}
-            >
-              <View style={styles.labelBlock}>
-                <Text style={[styles.label, { color: t.ink }]}>소속</Text>
-                <Text style={[styles.caption, { color: t.muted }]} numberOfLines={1}>
-                  {[p.affiliation, p.senderRank, p.senderName].filter(Boolean).join(" ") || "설정되지 않음"}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={t.muted} />
-            </Pressable>
-            {p.showReset && (
-              <>
-                <View style={[styles.separator, separator]} />
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={reset}
-                  style={({ pressed }) => [styles.row, { opacity: pressed ? 0.6 : 1 }]}
-                >
-                  <Text style={[styles.label, styles.grow, { color: t.danger }]}>환자 기록 전체 초기화</Text>
-                </Pressable>
-              </>
-            )}
-          </>
-        ) : (
-          <View style={styles.affiliation}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="기록 옵션으로 돌아가기"
-              onPress={() => setMode("main")}
-              style={({ pressed }) => [styles.back, { opacity: pressed ? 0.6 : 1 }]}
-            >
-              <Ionicons name="chevron-back" size={18} color={t.accent} />
-              <Text style={[styles.backText, { color: t.accent }]}>기록 옵션</Text>
-            </Pressable>
-            <RecordAffiliation isDark={p.isDark} onSaved={p.onAffiliationSaved} />
-          </View>
-        )}
+        <Pressable
+          accessibilityRole="button"
+          onPress={reset}
+          style={({ pressed }) => [styles.row, { opacity: pressed ? 0.6 : 1 }]}
+        >
+          <Ionicons name="trash-outline" size={20} color={t.danger} />
+          <Text style={[styles.label, styles.grow, { color: t.danger }]}>환자 기록 전체 초기화</Text>
+        </Pressable>
       </Animated.View>
     </NoteModal>
   );
 }
-const styles = StyleSheet.create({
+const useStyles = makeStyles({
   panel: {
     position: "absolute",
     borderRadius: 28,
@@ -190,12 +106,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
   },
   row: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12 },
-  labelBlock: { flex: 1, gap: 2 },
-  label: { fontSize: 16, fontFamily: "Pretendard-Regular" },
+  label: { fontSize: TYPE.body, fontFamily: "Pretendard-Regular" },
   grow: { flex: 1 },
-  caption: { fontSize: 13, fontFamily: "Pretendard-Regular" },
-  separator: { height: StyleSheet.hairlineWidth },
-  affiliation: { paddingVertical: 8, gap: 8 },
-  back: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 2, alignSelf: "flex-start" },
-  backText: { fontSize: 16, fontFamily: "Pretendard-Medium" },
 });

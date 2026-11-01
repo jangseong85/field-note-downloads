@@ -15,7 +15,10 @@ import { ClinicalInput, RecordTabs } from "./ClinicalControls";
 import DateTimeFields from "./DateTimeFields";
 import DateTimeWheelPicker from "./DateTimeWheelPicker";
 import ResizableMemoInput from "./ResizableMemoInput";
+import MedicineBagAnalysis from "./MedicineBagAnalysis";
 import MemoAttachments, { MemoAttachment } from "./MemoAttachments";
+import type { NoteSection } from "./navigation";
+import SendPhotosSheet from "./SendPhotosSheet";
 import { clinicalTheme, vitalTint } from "./clinicalTheme";
 import { NoteModal, useNoteAlert } from "./NoteDialogs";
 import { calculateAge } from "./idDate";
@@ -27,6 +30,7 @@ import { historySummary, orderedHistory } from "./historyOptions";
 import ReviewChecklist from "./ReviewChecklistCard";
 import { VITAL_TERMS, historyTerm, terms } from "./terms";
 import type { SenderInfo } from "./smsMessage";
+import { TYPE, makeStyles } from "./design";
 
 export type NoteTextKey =
   | ContactKey
@@ -52,6 +56,11 @@ export type NoteForm = VitalValues &
     historyDrawing: string | null;
   };
 type Props = {
+  /** Which bottom tab is showing; the patient rail above it is shared by all four. */
+  section: NoteSection;
+  /** The header 문자 button opens the SMS sheet for the selected patient. */
+  smsOpen: boolean;
+  onSmsClose: () => void;
   isDark: boolean;
   useWheelPicker?: boolean;
   form: NoteForm;
@@ -90,6 +99,7 @@ const vitals: { key: VitalKey; label: string; unit: string }[] = [
 ];
 
 export default function PatientNoteScreen(p: Props) {
+  const s = useS();
   const Alert = { alert: useNoteAlert() };
   const { isDark, form } = p;
   const t = clinicalTheme(isDark);
@@ -105,6 +115,7 @@ export default function PatientNoteScreen(p: Props) {
   const previewingId = preview !== null && preview === form.idDocument?.uri;
   const [focusedVital, setFocusedVital] = useState<VitalKey | null>(null);
   const [birthPickerOpen, setBirthPickerOpen] = useState(false);
+  const [medicineOpen, setMedicineOpen] = useState(false);
   useEffect(() => {
     setHistoryOpen(false);
     setPreview(null);
@@ -274,8 +285,8 @@ export default function PatientNoteScreen(p: Props) {
             disabled={p.busy || p.mediaBusy}
           />
         </View>
-        <View key={p.activePatientId} style={s.body}>
-          <View style={s.section}>
+        {p.section !== "records" && <View key={p.activePatientId} style={s.body}>
+          {p.section === "patient" && <View style={s.section}>
             <View style={s.idActions}>
               {form.idDocument && (
                 <Pressable
@@ -399,7 +410,8 @@ export default function PatientNoteScreen(p: Props) {
               form={form}
               onUpdate={p.onUpdate}
             />
-          </View>
+          </View>}
+          {p.section === "status" && <>
           <View style={s.section}>
             {heading(L.complaint)}
             <DateTimeFields
@@ -521,6 +533,8 @@ export default function PatientNoteScreen(p: Props) {
             </View>
             {map !== null && <Text style={[s.map, muted]}>{L.map(map)}</Text>}
           </View>
+          </>}
+          {p.section === "medication" && <>
           <View style={s.section}>
             {heading(L.history)}
             <View style={s.chips}>
@@ -578,9 +592,29 @@ export default function PatientNoteScreen(p: Props) {
             {drawButton("historyDrawing", "병력 손글씨 입력")}
             {drawing(form.historyDrawing, "historyDrawing")}
           </View>
-        </View>
+          <View style={s.section}>
+            {heading("복용 약물")}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="약 봉투 사진을 ChatGPT로 분석"
+              disabled={p.busy || p.mediaBusy}
+              onPress={() => {
+                p.onMediaBusyChange(true);
+                setMedicineOpen(true);
+              }}
+              style={({ pressed }) => [
+                s.medicineButton,
+                { backgroundColor: t.field, opacity: p.busy || p.mediaBusy ? 0.4 : pressed ? 0.6 : 1 },
+              ]}
+            >
+              <Ionicons name="camera-outline" size={18} color={t.accent} />
+              <Text style={[s.medicineText, { color: t.accent }]}>약 봉투 촬영 · ChatGPT 분석</Text>
+            </Pressable>
+          </View>
+          </>}
+        </View>}
       </View>
-      <View style={[s.attachmentsSection, { backgroundColor: t.surface }]}>
+      {p.section === "records" && <View style={[s.attachmentsSection, { backgroundColor: t.surface }]}>
         <MemoAttachments
           key={p.activePatientId}
           isDark={isDark}
@@ -588,28 +622,43 @@ export default function PatientNoteScreen(p: Props) {
           onAppend={p.onAppend}
           onRemove={p.onRemoveAttachment}
           onBusyChange={p.onMediaBusyChange}
-          smsSource={{
-            sender: p.sender,
-            name: form.name,
-            birthDate: form.birthDate,
-            chiefComplaint: form.chiefComplaint,
-            onsetDate: form.onsetDate,
-            onsetTime: form.onsetTime,
-            measurements: p.measurements,
-            historySummary: historySummary(form.history, term, L.historyPrefix),
-            medical,
-          }}
-          contacts={[
-            { label: "환자", phone: form.patientPhone },
-            {
-              label: form.guardianRelation
-                ? `보호자(${form.guardianRelation})`
-                : "보호자",
-              phone: form.guardianPhone,
-            },
-          ].filter((contact) => contact.phone.replace(/\D/g, "").length >= 9)}
         />
-      </View>
+      </View>}
+      <MedicineBagAnalysis
+        visible={medicineOpen}
+        isDark={isDark}
+        onClose={() => {
+          setMedicineOpen(false);
+          p.onMediaBusyChange(false);
+        }}
+      />
+      <SendPhotosSheet
+        key={p.activePatientId}
+        visible={p.smsOpen}
+        isDark={isDark}
+        photos={form.attachments.filter((item) => item.kind === "photo")}
+        onClose={p.onSmsClose}
+        source={{
+          sender: p.sender,
+          name: form.name,
+          birthDate: form.birthDate,
+          chiefComplaint: form.chiefComplaint,
+          onsetDate: form.onsetDate,
+          onsetTime: form.onsetTime,
+          measurements: p.measurements,
+          historySummary: historySummary(form.history, term, L.historyPrefix),
+          medical,
+        }}
+        contacts={[
+          { label: "환자", phone: form.patientPhone },
+          {
+            label: form.guardianRelation
+              ? `보호자(${form.guardianRelation})`
+              : "보호자",
+            phone: form.guardianPhone,
+          },
+        ].filter((contact) => contact.phone.replace(/\D/g, "").length >= 9)}
+      />
       <DateTimeWheelPicker
         key={p.activePatientId}
         visible={birthPickerOpen}
@@ -767,9 +816,18 @@ export default function PatientNoteScreen(p: Props) {
     </>
   );
 }
-const s = StyleSheet.create({
+const useS = makeStyles({
   record: { borderRadius: 28, overflow: "hidden" },
   attachmentsSection: { borderRadius: 26, marginTop: 16, padding: 20 },
+  medicineButton: {
+    minHeight: 52,
+    borderRadius: 26,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  medicineText: { fontSize: TYPE.sub, fontFamily: "Pretendard-Medium" },
   tools: { flexDirection: "row", alignItems: "center" },
   tool: {
     width: 44,
@@ -787,7 +845,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 18,
   },
-  pillText: { fontSize: 14, fontFamily: "Pretendard-SemiBold" },
+  pillText: { fontSize: TYPE.sub, fontFamily: "Pretendard-SemiBold" },
   drawRow: { flexDirection: "row", justifyContent: "flex-end", marginTop: 8 },
   drawButton: {
     minHeight: 40,
@@ -797,7 +855,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 20,
   },
-  drawText: { fontSize: 14, fontFamily: "Pretendard-SemiBold" },
+  drawText: { fontSize: TYPE.sub, fontFamily: "Pretendard-SemiBold" },
   body: { paddingHorizontal: 16, paddingTop: 14 },
   section: { marginBottom: 32 },
   sectionHeader: {
@@ -809,7 +867,7 @@ const s = StyleSheet.create({
   },
   sectionHeading: { flex: 1, gap: 5 },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: TYPE.section,
     fontFamily: "Pretendard-Bold",
     letterSpacing: -0.4,
   },
@@ -823,7 +881,7 @@ const s = StyleSheet.create({
   },
   stack: { flexDirection: "column", alignItems: "stretch" },
   nameCell: { flex: 1, minWidth: 0 },
-  fieldLabel: { fontSize: 12, fontFamily: "Pretendard-Regular" },
+  fieldLabel: { fontSize: TYPE.caption, fontFamily: "Pretendard-Regular" },
   nameInput: { paddingHorizontal: 0, paddingVertical: 8, minHeight: 42 },
   sex: { width: 148, flexShrink: 0 },
   identityDivider: { height: StyleSheet.hairlineWidth },
@@ -838,13 +896,13 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   birthValue: {
-    fontSize: 16,
+    fontSize: TYPE.body,
     fontFamily: "Pretendard-Regular",
     includeFontPadding: false,
     fontVariant: ["tabular-nums"],
   },
   age: {
-    fontSize: 16,
+    fontSize: TYPE.body,
     fontFamily: "Pretendard-Regular",
     includeFontPadding: false,
     fontVariant: ["tabular-nums"],
@@ -871,29 +929,29 @@ const s = StyleSheet.create({
     gap: 4,
   },
   vitalLabel: {
-    fontSize: 13,
+    fontSize: TYPE.sub,
     fontFamily: "Pretendard-Medium",
     textAlign: "center",
   },
-  unit: { fontSize: 12, textAlign: "center" },
+  unit: { fontSize: TYPE.caption, textAlign: "center" },
   vitalInput: {
     width: "100%",
     paddingHorizontal: 0,
     paddingVertical: 4,
     textAlign: "center",
-    fontSize: 28,
+    fontSize: TYPE.display,
     lineHeight: 36,
     fontFamily: "Pretendard-SemiBold",
     fontVariant: ["tabular-nums"],
     letterSpacing: -0.6,
   },
-  bloodPressureInput: { fontSize: 24, letterSpacing: -0.8 },
+  bloodPressureInput: { fontSize: TYPE.numeric, letterSpacing: -0.8 },
   vitalPlaceholder: {
-    fontSize: 16,
+    fontSize: TYPE.body,
     fontFamily: "Pretendard-Regular",
     letterSpacing: 0,
   },
-  map: { fontSize: 12, marginTop: 10 },
+  map: { fontSize: TYPE.caption, marginTop: 10 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 14 },
   chip: {
     flexDirection: "row",
@@ -903,7 +961,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 13,
     borderRadius: 18,
   },
-  chipText: { fontSize: 13, fontFamily: "Pretendard-Medium" },
+  chipText: { fontSize: TYPE.sub, fontFamily: "Pretendard-Medium" },
   moreHistory: {
     minHeight: 36,
     flexDirection: "row",
@@ -913,7 +971,7 @@ const s = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
   },
-  historySummary: { fontSize: 13, lineHeight: 21, marginBottom: 14 },
+  historySummary: { fontSize: TYPE.sub, lineHeight: 21, marginBottom: 14 },
   savedDrawing: {
     flexDirection: "row",
     alignItems: "center",
@@ -928,7 +986,7 @@ const s = StyleSheet.create({
     gap: 8,
     alignItems: "center",
   },
-  savedDrawingText: { fontSize: 14, flex: 1 },
+  savedDrawingText: { fontSize: TYPE.sub, flex: 1 },
   idActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -958,12 +1016,12 @@ const s = StyleSheet.create({
   previewTitleBlock: { alignItems: "center", gap: 2 },
   previewTitle: {
     color: "#FFFFFF",
-    fontSize: 17,
+    fontSize: TYPE.body,
     fontFamily: "Pretendard-SemiBold",
   },
   previewSubtitle: {
     color: "rgba(255,255,255,0.65)",
-    fontSize: 12,
+    fontSize: TYPE.caption,
     fontFamily: "Pretendard-Regular",
   },
   previewZoom: { flex: 1 },
@@ -998,12 +1056,12 @@ const s = StyleSheet.create({
   },
   previewLabel: {
     color: "rgba(255,255,255,0.65)",
-    fontSize: 14,
+    fontSize: TYPE.sub,
     fontFamily: "Pretendard-Regular",
   },
   previewValue: {
     color: "#FFFFFF",
-    fontSize: 16,
+    fontSize: TYPE.body,
     fontFamily: "Pretendard-SemiBold",
     fontVariant: ["tabular-nums"],
   },
@@ -1019,7 +1077,7 @@ const s = StyleSheet.create({
   },
   rescanText: {
     color: "#101113",
-    fontSize: 16,
+    fontSize: TYPE.body,
     fontFamily: "Pretendard-SemiBold",
   },
 });

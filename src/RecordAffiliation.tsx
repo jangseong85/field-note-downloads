@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ClinicalInput } from "./ClinicalControls";
 import { clinicalTheme } from "./clinicalTheme";
+import { useType } from "./design";
 import { useNoteAlert } from "./NoteDialogs";
 import type { SenderInfo } from "./smsMessage";
 
@@ -24,6 +25,7 @@ export async function loadSender(): Promise<SenderInfo> {
 
 /** Device-level setting, deliberately separate from patient/reset storage. */
 export default function RecordAffiliation({ isDark, onSaved }: { isDark: boolean; onSaved: (sender: SenderInfo) => void }) {
+  const type = useType();
   const t = clinicalTheme(isDark);
   const alert = useNoteAlert();
   const [sender, setSender] = useState<SenderInfo>({ affiliation: "", rank: "", name: "" });
@@ -51,7 +53,7 @@ export default function RecordAffiliation({ isDark, onSaved }: { isDark: boolean
   }, [alert]);
   const labelStyle = {
     color: t.muted,
-    fontSize: 13,
+    fontSize: type.sub,
     fontFamily: "Pretendard-Medium",
   };
   const update = (key: keyof SenderInfo) => (value: string) =>
@@ -130,7 +132,7 @@ export default function RecordAffiliation({ isDark, onSaved }: { isDark: boolean
           style={{
             color: t.accent,
             fontFamily: "Pretendard-Medium",
-            fontSize: 14,
+            fontSize: type.sub,
           }}
         >
           {saving ? "저장 중" : "저장"}

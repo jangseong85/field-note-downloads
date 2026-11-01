@@ -1,13 +1,15 @@
 import React, { useRef, useState } from "react";
-import { PanResponder, StyleSheet, TextInputProps, View } from "react-native";
+import { PanResponder, TextInputProps, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ClinicalField, ClinicalInput } from "./ClinicalControls";
 import { clinicalTheme } from "./clinicalTheme";
+import { TYPE, makeStyles } from "./design";
 
 export default function ResizableMemoInput({
   isDark,
   ...props
 }: TextInputProps & { isDark: boolean }) {
+  const styles = useStyles();
   const [height, setHeight] = useState(120);
   const [focused, setFocused] = useState(false);
   const t = clinicalTheme(isDark);
@@ -74,7 +76,7 @@ export default function ResizableMemoInput({
     </ClinicalField>
   );
 }
-const styles = StyleSheet.create({
+const useStyles = makeStyles({
   editor: {
     position: "relative",
     overflow: "hidden",
@@ -83,7 +85,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 12,
     paddingBottom: 34,
-    fontSize: 16,
+    fontSize: TYPE.body,
     lineHeight: 25,
     fontFamily: "Pretendard-Regular",
     includeFontPadding: false,

@@ -6,9 +6,9 @@ import {
   AccessibilityInfo,
   Animated,
   PanResponder,
-  StyleSheet,
   View,
 } from "react-native";
+import { makeStyles } from "./design";
 export const SQUISH_SWITCH_CONFIG = {
   trackColor: "#27272a",
   trackOnColor: "#f5f5f5",
@@ -51,6 +51,7 @@ export default function SquishThemeSwitch({
   disabled?: boolean;
   accessibilityLabel?: string;
 }) {
+  const styles = useStyles();
   const [reduceMotion, setReduceMotion] = useState(true);
   const palette = isDark ? config : SQUISH_LIGHT_COLORS;
   const x = useRef(new Animated.Value(checked ? TRAVEL : 0)).current;
@@ -270,7 +271,7 @@ export default function SquishThemeSwitch({
     </View>
   );
 }
-const styles = StyleSheet.create({
+const useStyles = makeStyles({
   touch: {
     width: 88,
     minHeight: 48,

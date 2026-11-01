@@ -7,7 +7,6 @@ import {
   Pressable,
   ScrollView,
   StyleProp,
-  StyleSheet,
   Text,
   TextInput,
   TextInputProps,
@@ -16,6 +15,7 @@ import {
 } from "react-native";
 import { clinicalMetrics as m, clinicalTheme } from "./clinicalTheme";
 import { horizontalControlDrag, nearestSegment } from "./controlGestures";
+import { TYPE, makeStyles } from "./design";
 
 export const RUBBER_SEGMENT_CONFIG = {
   size: "medium",
@@ -65,6 +65,7 @@ export function ClinicalField({
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
+  const styles = useStyles();
   const t = clinicalTheme(isDark);
   return (
     <View
@@ -90,6 +91,7 @@ export function ClinicalInput({
   onBlur,
   ...props
 }: TextInputProps & { isDark: boolean; embedded?: boolean }) {
+  const styles = useStyles();
   const t = clinicalTheme(isDark);
   const [focused, setFocused] = useState(false);
   return (
@@ -156,6 +158,7 @@ export function RecordTabs({
   thumbInset?: number;
   style?: StyleProp<ViewStyle>;
 }) {
+  const styles = useStyles();
   const [reduceMotion, setReduceMotion] = useState(true);
   const colors = { ...rubberSegmentColors(isDark), ...(trackColor ? { trackColor } : {}) };
   const [slots, setSlots] = useState<
@@ -607,6 +610,7 @@ function RecordTab({
   itemStyle?: StyleProp<ViewStyle>;
   renderOption?: RecordTabRenderer;
 }) {
+  const styles = useStyles();
   const scale = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     if (disabled || reduceMotion) {
@@ -664,7 +668,7 @@ function RecordTab({
     </Pressable>
   );
 }
-const styles = StyleSheet.create({
+const useStyles = makeStyles({
   field: {
     minHeight: m.fieldHeight,
     borderRadius: m.radius,
@@ -677,7 +681,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: m.padding,
     paddingVertical: 12,
     fontFamily: "Pretendard-Regular",
-    fontSize: m.fontSize,
+    fontSize: TYPE.body,
     includeFontPadding: false,
     fontVariant: ["tabular-nums"],
   },
@@ -729,5 +733,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  tabText: { fontSize: 13 },
+  tabText: { fontSize: TYPE.sub },
 });

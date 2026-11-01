@@ -22,6 +22,7 @@ import type { MemoAttachment } from "./MemoAttachments";
 import { NoteModal, useNoteAlert } from "./NoteDialogs";
 import { formatPhoneNumber } from "./phoneNumber";
 import { SMS_SECTIONS, SmsSection, SmsSource, buildSmsMessage, smsLines } from "./smsMessage";
+import { TYPE, makeStyles } from "./design";
 
 export const MAX_SMS_PHOTOS = 10;
 const SECTION_LABELS: Record<SmsSection, { title: string; detail: string }> = {
@@ -54,6 +55,7 @@ async function prepareForMms(uri: string): Promise<{ shareUri: string; tempUri: 
 }
 
 export default function SendPhotosSheet(p: Props) {
+  const s = useS();
   const t = clinicalTheme(p.isDark);
   const alert = useNoteAlert();
   const [recipient, setRecipient] = useState("");
@@ -247,33 +249,33 @@ export default function SendPhotosSheet(p: Props) {
     </NoteModal>
   );
 }
-const s = StyleSheet.create({
+const useS = makeStyles({
   backdrop: { flex: 1, justifyContent: "flex-end" },
   sheet: { maxHeight: "92%", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 16 },
   grabber: { width: 36, height: 5, borderRadius: 3, alignSelf: "center", marginTop: 8 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8 },
   round: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  title: { fontSize: 17, fontFamily: "Pretendard-SemiBold" },
+  title: { fontSize: TYPE.body, fontFamily: "Pretendard-SemiBold" },
   content: { paddingBottom: 24, gap: 8 },
-  label: { fontSize: 13, fontFamily: "Pretendard-Medium", marginTop: 8, marginHorizontal: 4 },
+  label: { fontSize: TYPE.sub, fontFamily: "Pretendard-Medium", marginTop: 8, marginHorizontal: 4 },
   labelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  input: { minHeight: 52, borderRadius: 16, paddingHorizontal: 16, fontSize: 17, fontFamily: "Pretendard-Regular" },
+  input: { minHeight: 52, borderRadius: 16, paddingHorizontal: 16, fontSize: TYPE.body, fontFamily: "Pretendard-Regular" },
   chips: { flexDirection: "row", gap: 6 },
   chip: { minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: "center" },
-  chipText: { fontSize: 14, fontFamily: "Pretendard-Medium" },
-  empty: { fontSize: 13, marginHorizontal: 4 },
+  chipText: { fontSize: TYPE.sub, fontFamily: "Pretendard-Medium" },
+  empty: { fontSize: TYPE.sub, marginHorizontal: 4 },
   photos: { gap: 8, paddingVertical: 4, paddingRight: 8 },
   thumb: { width: 64, height: 64, borderRadius: 12 },
   thumbCheck: { position: "absolute", right: -4, top: -4 },
   check: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
   allButton: { minHeight: 32, paddingHorizontal: 12, borderRadius: 16, justifyContent: "center", marginTop: 8 },
-  allText: { fontSize: 13, fontFamily: "Pretendard-Medium" },
+  allText: { fontSize: TYPE.sub, fontFamily: "Pretendard-Medium" },
   group: { borderRadius: 18, paddingHorizontal: 14 },
   option: { minHeight: 54, flexDirection: "row", alignItems: "center", gap: 12 },
   optionText: { flex: 1, gap: 2 },
-  optionTitle: { fontSize: 16, fontFamily: "Pretendard-Regular" },
-  optionDetail: { fontSize: 12, fontFamily: "Pretendard-Regular" },
+  optionTitle: { fontSize: TYPE.body, fontFamily: "Pretendard-Regular" },
+  optionDetail: { fontSize: TYPE.caption, fontFamily: "Pretendard-Regular" },
   preview: { borderRadius: 16, padding: 14 },
-  previewText: { fontSize: 14, lineHeight: 22, fontFamily: "Pretendard-Regular" },
-  note: { fontSize: 12, lineHeight: 18, marginHorizontal: 4 },
+  previewText: { fontSize: TYPE.sub, lineHeight: 22, fontFamily: "Pretendard-Regular" },
+  note: { fontSize: TYPE.caption, lineHeight: 18, marginHorizontal: 4 },
 });

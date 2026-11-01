@@ -1,28 +1,27 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { normalizeDesign } from "./src/design";
+import { isTextSize, makeStyles, TEXT_SIZE_KEY, TextSizeContext, TYPE, useType, type TextSize } from "./src/design";
 import { clinicalTheme } from "./src/clinicalTheme";
 import { createMediaSaveTask, MediaSaveTask, runMediaSave } from "./src/mediaSave";
 import { planPatientWorkspaceReset } from "./src/patientUpdates";
+import { clearMedicineBagFiles } from "./src/medicineBagFiles";
 import { addMeasurement, deleteMeasurement, selectMeasurement, snapshotMeasurements } from "./src/vitalMeasurements";
 import { formatTimestamp } from "./src/dateTime";
 import { Frame } from "./src/cameraCrop";
 import PatientNoteScreen from "./src/PatientNoteScreen";
-import HomeScreen from "./src/HomeScreen";
 import SettingsScreen from "./src/SettingsScreen";
 import { NAVIGATION_ITEMS, navigationItemHeight as compactNavigationItemHeight, type AppTab } from "./src/navigation";
-import SquishThemeSwitch from "./src/SquishThemeSwitch";
-import RecordAffiliation, { loadSender } from "./src/RecordAffiliation";
+import { loadSender } from "./src/RecordAffiliation";
 import type { SenderInfo } from "./src/smsMessage";
 import RecordOptionsPopover, { PopoverAnchor } from "./src/RecordOptionsPopover";
 import { RecordTabs } from "./src/ClinicalControls";
-import { CenteredDialog, NoteDialogHost, NoteDialogProvider, NoteModal, useNoteAlert } from "./src/NoteDialogs";
+import { NoteDialogHost, NoteDialogProvider, NoteModal, useNoteAlert } from "./src/NoteDialogs";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { StatusBar } from "expo-status-bar";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
 import { captureRef } from "react-native-view-shot";
@@ -91,16 +90,35 @@ function formatBodyTemperature(previousValue: string, value: string): string {
 
 
 export default function App() {
-  return <NoteDialogProvider><FieldNoteApp /></NoteDialogProvider>;
+  return <TextSizeProvider><NoteDialogProvider><FieldNoteApp /></NoteDialogProvider></TextSizeProvider>;
+}
+
+function TextSizeProvider({ children }: { children: React.ReactNode }) {
+  const [size, setSizeState] = useState<TextSize>("medium");
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem(TEXT_SIZE_KEY).then(value => { if (active && isTextSize(value)) setSizeState(value); }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+  const value = useMemo(() => ({
+    size,
+    setSize: (next: TextSize) => {
+      setSizeState(next);
+      void AsyncStorage.setItem(TEXT_SIZE_KEY, next).catch(() => undefined);
+    },
+  }), [size]);
+  return <TextSizeContext.Provider value={value}>{children}</TextSizeContext.Provider>;
 }
 
 function FieldNoteApp() {
+  const styles = useStyles();
+  const type = useType();
   const Alert = { alert: useNoteAlert() };
   const [optionsVisible, setOptionsVisible] = useState(false);
   const optionsButtonRef = useRef<View>(null);
   const [optionsAnchor, setOptionsAnchor] = useState<PopoverAnchor | null>(null);
   const openOptions = () => {
-    if (Platform.OS !== "ios" || !optionsButtonRef.current) {
+    if (!optionsButtonRef.current) {
       setOptionsVisible(true);
       return;
     }
@@ -128,7 +146,8 @@ function FieldNoteApp() {
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark">(
     "system",
   );
-  const [activeTab, setActiveTab] = useState<AppTab>("home");
+  const [activeTab, setActiveTab] = useState<AppTab>("patient");
+  const [smsOpen, setSmsOpen] = useState(false);
   const [scannerBusy, setScannerBusy] = useState(false);
   const [sender, setSender] = useState<SenderInfo>({ affiliation: "", rank: "", name: "" });
   const affiliation = sender.affiliation;
@@ -214,6 +233,8 @@ function FieldNoteApp() {
       if (recorded) Alert.alert("환자 기록 자동 삭제", `등록 후 24시간이 지난 환자 기록 ${recorded}건을 사진·녹취·필기와 함께 삭제했습니다.`);
     } catch { /* Retried on the next check. */ }
   };
+  // Medicine-bag photos are never kept; remove any left by a session the app did not finish.
+  useEffect(() => { void clearMedicineBagFiles(); }, []);
   useEffect(() => {
     if (recoveryStatus !== "ready") return;
     void expirePatients.current();
@@ -228,8 +249,8 @@ function FieldNoteApp() {
       Alert.alert("기록 진행 중", "녹취를 중지하거나 촬영을 마친 후 이동해 주세요.");
       return true;
     }
-    if (activeTab === "home") return false;
-    navigate("home");
+    if (activeTab === "patient") return false;
+    navigate("patient");
     return true;
   };
   useEffect(() => {
@@ -430,10 +451,10 @@ function FieldNoteApp() {
   };
 
   if (recoveryStatus === "error") return <View style={[styles.loading, { backgroundColor: clinicalTheme(isDark).page, padding: 24, gap: 16 }]}>
-    <Text style={{ color: clinicalTheme(isDark).ink, fontSize: 18, textAlign: "center" }}>기존 환자 기록을 불러오지 못했습니다.</Text>
+    <Text style={{ color: clinicalTheme(isDark).ink, fontSize: type.section, textAlign: "center" }}>기존 환자 기록을 불러오지 못했습니다.</Text>
     <Text style={{ color: clinicalTheme(isDark).muted, textAlign: "center" }}>기록 보호를 위해 입력과 저장을 중지했습니다. 저장 공간을 확인한 뒤 다시 시도해 주세요.</Text>
     <Pressable accessibilityRole="button" onPress={() => void store.restore()} style={{ minHeight: 48, justifyContent: "center", paddingHorizontal: 24 }}>
-      <Text style={{ color: clinicalTheme(isDark).accent, fontSize: 16 }}>불러오기 재시도</Text>
+      <Text style={{ color: clinicalTheme(isDark).accent, fontSize: type.body }}>불러오기 재시도</Text>
     </Pressable>
   </View>;
   if (!loaded || (!fontsLoaded && !fontError))
@@ -465,15 +486,17 @@ function FieldNoteApp() {
             >
               <View style={styles.noteAppHeader}>
                 <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
-                  <View style={styles.noteBrand}><Text style={[styles.noteBrandNumber, { color: clinicalTheme(isDark).brand }]}>119</Text><Text style={[styles.noteBrandText, { color: clinicalTheme(isDark).muted }, { fontSize: 12, letterSpacing: 1.2 }]}>FIELD NOTE</Text></View>
-                  {activeTab !== "memo" && <Text style={[styles.noteTitle, { color: clinicalTheme(isDark).ink }]}>{activeTab === "home" ? "홈" : "설정"}</Text>}
+                  <View style={styles.noteBrand}><Text style={[styles.noteBrandNumber, { color: clinicalTheme(isDark).brand }]}>119</Text><Text style={[styles.noteBrandText, { color: clinicalTheme(isDark).muted }]}>FIELD NOTE</Text></View>
+                  {activeTab === "settings" && <Text style={[styles.noteTitle, { color: clinicalTheme(isDark).ink }]}>설정</Text>}
                 </View>
-                <Pressable ref={optionsButtonRef} accessibilityRole="button" accessibilityLabel="화면 및 기록 옵션" onPress={openOptions} style={[styles.noteHeaderMenu, { borderRadius: 22, backgroundColor: clinicalTheme(isDark).surface, borderWidth: StyleSheet.hairlineWidth, borderColor: clinicalTheme(isDark).border }]}><Ionicons name="ellipsis-horizontal" size={20} color={clinicalTheme(isDark).ink} /></Pressable>
+                {activeTab !== "settings" && <View style={styles.noteHeaderActions}>
+                  <Pressable accessibilityRole="button" accessibilityLabel="사진과 기록을 문자로 보내기" disabled={mediaBusy} onPress={() => setSmsOpen(true)} style={({ pressed }) => [styles.noteHeaderMenu, { borderRadius: 22, backgroundColor: clinicalTheme(isDark).surface, borderWidth: StyleSheet.hairlineWidth, borderColor: clinicalTheme(isDark).border, opacity: mediaBusy ? 0.4 : pressed ? 0.6 : 1 }]}><Ionicons name="chatbubble-ellipses-outline" size={20} color={clinicalTheme(isDark).accent} /></Pressable>
+                  <Pressable ref={optionsButtonRef} accessibilityRole="button" accessibilityLabel="메모 메뉴" onPress={openOptions} style={[styles.noteHeaderMenu, { borderRadius: 22, backgroundColor: clinicalTheme(isDark).surface, borderWidth: StyleSheet.hairlineWidth, borderColor: clinicalTheme(isDark).border }]}><Ionicons name="ellipsis-horizontal" size={20} color={clinicalTheme(isDark).ink} /></Pressable>
+                </View>}
               </View>
-              {activeTab === "home" ? (
-                <HomeScreen isDark={isDark} sender={sender} onOpenMemo={() => navigate("memo")} onOpenSettings={() => navigate("settings")} />
-              ) : activeTab === "memo" ? (
-                <PatientNoteScreen isDark={isDark} form={form} useWheelPicker={useWheelPicker}
+              {activeTab !== "settings" ? (
+                <PatientNoteScreen section={activeTab} isDark={isDark} form={form} useWheelPicker={useWheelPicker}
+                  smsOpen={smsOpen} onSmsClose={() => setSmsOpen(false)}
                   patients={patients.map((patient, index) => ({ id: patient.id, label: (patient.id === activePatientId ? form.name : patient.form.name).trim() || `환자 ${index + 1}` }))} activePatientId={activePatientId}
                   measurements={snapshotMeasurements(form)}
                   busy={scannerBusy || deletingPatient} mediaBusy={mediaBusy} onSelectPatient={selectPatient} onAddPatient={() => selectPatient()} onDeletePatient={requestDeletePatient} onUpdate={update}
@@ -493,13 +516,13 @@ function FieldNoteApp() {
                     await deleteLocalFile(attachment.uri);
                   }}
                 />
-              ) : activeTab === "settings" ? (
+              ) : (
                 <SettingsScreen isDark={isDark} useWheelPicker={useWheelPicker} wheelPreferenceReady={wheelPreferenceReady}
                   medicalTerms={medicalTerms} onThemeChange={changeTheme}
                   followSystemTheme={themeMode === "system"} onFollowSystemThemeChange={follow => changeThemeMode(follow ? "system" : isDark ? "dark" : "light")}
                   onWheelChange={value => void changeWheelPreference(value)}
                   onMedicalTermsChange={value => void changeMedicalTerms(value)} onAffiliationSaved={setSender} />
-              ) : null}
+              )}
             </ScrollView>
           </KeyboardAvoidingView>
           <BottomNavigation
@@ -577,50 +600,13 @@ function FieldNoteApp() {
             </View>
           </View>
         </NoteModal>
-        {Platform.OS === "ios" ? (
-          <RecordOptionsPopover
-            visible={optionsVisible}
-            isDark={isDark}
-            anchor={optionsAnchor}
-            affiliation={affiliation}
-            senderRank={sender.rank}
-            senderName={sender.name}
-            useWheelPicker={useWheelPicker}
-            wheelPreferenceReady={wheelPreferenceReady}
-            showReset={activeTab === "memo"}
-            onThemeChange={changeTheme}
-            onWheelChange={value => void changeWheelPreference(value)}
-            medicalTerms={medicalTerms}
-            onMedicalTermsChange={value => void changeMedicalTerms(value)}
-            onAffiliationSaved={setSender}
-            onReset={reset}
-            onClose={() => setOptionsVisible(false)}
-          />
-        ) : <CenteredDialog visible={optionsVisible} isDark={isDark} title="기록 옵션" onClose={() => setOptionsVisible(false)}>
-          {optionsVisible && <RecordAffiliation isDark={isDark} onSaved={setSender} />}
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: clinicalTheme(isDark).field, borderRadius: 14, paddingLeft: 16, minHeight: 60 }}>
-            <Text style={{ fontSize: 16, fontFamily: "Pretendard-Medium", color: clinicalTheme(isDark).ink }}>다크 모드</Text>
-            <SquishThemeSwitch isDark={isDark} checked={isDark} onChange={changeTheme} />
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: clinicalTheme(isDark).field, borderRadius: 14, paddingLeft: 16, minHeight: 60 }}>
-            <View style={{ flex: 1, gap: 4, paddingVertical: 10 }}>
-              <Text style={{ fontSize: 16, fontFamily: "Pretendard-Medium", color: clinicalTheme(isDark).ink }}>휠 피커 사용</Text>
-              <Text style={{ fontSize: 13, color: clinicalTheme(isDark).muted }}>{useWheelPicker ? "사용한다" : "사용하지 않는다 · 숫자 직접 입력"}</Text>
-            </View>
-            <SquishThemeSwitch isDark={isDark} accessibilityLabel="휠 피커 사용" checked={useWheelPicker} disabled={!wheelPreferenceReady} onChange={value => void changeWheelPreference(value)} />
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: clinicalTheme(isDark).field, borderRadius: 14, paddingLeft: 16, minHeight: 60 }}>
-            <View style={{ flex: 1, gap: 4, paddingVertical: 10 }}>
-              <Text style={{ fontSize: 16, fontFamily: "Pretendard-Medium", color: clinicalTheme(isDark).ink }}>의학용어로 표시</Text>
-              <Text style={{ fontSize: 13, color: clinicalTheme(isDark).muted }}>병력·검토사항을 HTN, DM처럼</Text>
-            </View>
-            <SquishThemeSwitch isDark={isDark} accessibilityLabel="의학용어로 표시" checked={medicalTerms} onChange={value => void changeMedicalTerms(value)} />
-          </View>
-          {activeTab === "memo" && <Pressable accessibilityRole="button" onPress={() => { setOptionsVisible(false); reset(); }} style={({ pressed }) => ({ minHeight: 48, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.6 : 1 })}>
-            <Text style={{ fontSize: 16, fontFamily: "Pretendard-Medium", color: clinicalTheme(isDark).danger }}>환자 기록 전체 초기화</Text>
-          </Pressable>}
-          <Pressable accessibilityRole="button" onPress={() => setOptionsVisible(false)} style={{ minHeight: 48, alignItems: "center", justifyContent: "center" }}><Text style={{ fontSize: 16, color: clinicalTheme(isDark).muted }}>닫기</Text></Pressable>
-        </CenteredDialog>}
+        <RecordOptionsPopover
+          visible={optionsVisible}
+          isDark={isDark}
+          anchor={optionsAnchor}
+          onReset={reset}
+          onClose={() => setOptionsVisible(false)}
+        />
         <NoteDialogHost isDark={isDark} />
         {showIntro && (
           <Animated.View
@@ -660,6 +646,7 @@ function BottomNavigation({
   isDark: boolean;
   onSelect: (tab: AppTab) => void;
 }) {
+  const styles = useStyles();
   const tabs = NAVIGATION_ITEMS;
   // Keep the floating capsule above the home indicator / system navigation bar.
   const t = clinicalTheme(isDark);
@@ -711,6 +698,7 @@ function HandwritingModal({
   /** Saving after "모두 지우기" removed the saved drawing and nothing new was drawn. */
   onDelete: () => Promise<void>;
 }) {
+  const styles = useStyles();
   const Alert = { alert: useNoteAlert() };
   const [paths, setPaths] = useState<InkStroke[]>([]);
   // The stroke being drawn lives in a ref and reaches the screen at most once per frame,
@@ -985,6 +973,7 @@ function EraserSizeSlider({
   isDark: boolean;
   onChange: (value: number) => void;
 }) {
+  const styles = useStyles();
   const min = 16;
   const max = 200;
   const trackWidth = useRef(1);
@@ -1071,34 +1060,7 @@ function EraserSizeSlider({
   );
 }
 
-const PRETENDARD_BY_WEIGHT = {
-  regular: "Pretendard-Regular",
-  medium: "Pretendard-Medium",
-  semiBold: "Pretendard-SemiBold",
-  bold: "Pretendard-Bold",
-} as const;
-
-function withPretendard<T extends StyleSheet.NamedStyles<T>>(source: T): T {
-  return Object.fromEntries(
-    Object.entries(normalizeDesign(source)).map(([name, style]) => {
-      const typedStyle = style as Record<string, unknown>;
-      if (!("fontSize" in typedStyle)) return [name, style];
-      const numericWeight = Number(typedStyle.fontWeight ?? 400);
-      const fontFamily =
-        numericWeight >= 700
-          ? PRETENDARD_BY_WEIGHT.bold
-          : numericWeight >= 600
-            ? PRETENDARD_BY_WEIGHT.semiBold
-            : numericWeight >= 500
-              ? PRETENDARD_BY_WEIGHT.medium
-              : PRETENDARD_BY_WEIGHT.regular;
-      return [name, { ...typedStyle, fontFamily, fontWeight: undefined }];
-    }),
-  ) as T;
-}
-
-const styles = StyleSheet.create(
-  withPretendard({
+const useStyles = makeStyles({
     handwritingPage: {
       flex: 1,
       paddingHorizontal: 16,
@@ -1111,9 +1073,9 @@ const styles = StyleSheet.create(
     },
     handwritingRound: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
     handwritingRetry: { minWidth: 72, height: 44, borderRadius: 22, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
-    handwritingRetryText: { fontSize: 15, fontFamily: "Pretendard-SemiBold" },
+    handwritingRetryText: { fontSize: TYPE.sub, fontFamily: "Pretendard-Medium" },
     handwritingMode: { flex: 1, minWidth: 0 },
-    handwritingTitle: { fontSize: 17, fontFamily: "Pretendard-SemiBold" },
+    handwritingTitle: { fontSize: TYPE.section, fontFamily: "Pretendard-Medium" },
     handwritingCanvas: {
       flex: 1,
       borderRadius: 24,
@@ -1154,10 +1116,10 @@ const styles = StyleSheet.create(
     },
     eraserSizeLabel: {
       color: "#636366",
-      fontSize: 11,
-      fontWeight: "800",
+      fontSize: TYPE.caption,
+      fontFamily: "Pretendard-Medium",
     },
-    eraserSizeValue: { color: clinicalTheme(false).accent, fontSize: 11, fontWeight: "900" },
+    eraserSizeValue: { color: clinicalTheme(false).accent, fontSize: TYPE.caption, fontFamily: "Pretendard-Medium" },
     eraserSliderTouch: { height: 30, justifyContent: "center" },
     eraserSliderTrack: {
       height: 5,
@@ -1187,10 +1149,11 @@ const styles = StyleSheet.create(
     flex: { flex: 1 },
     noteAppHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 6, paddingTop: 8, paddingBottom: 10 },
     noteBrand: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 9 },
-    noteBrandNumber: { fontSize: 13, fontWeight: "700", letterSpacing: -.4 },
-    noteBrandText: { fontSize: 11, fontWeight: "500", letterSpacing: 1.6 },
-    noteTitle: { fontSize: 30, fontWeight: "600", letterSpacing: -1.2 },
+    noteBrandNumber: { fontSize: TYPE.sub, fontFamily: "Pretendard-Bold", letterSpacing: -.4 },
+    noteBrandText: { fontSize: TYPE.caption, fontFamily: "Pretendard-Medium", letterSpacing: 1.2 },
+    noteTitle: { fontSize: TYPE.display, fontFamily: "Pretendard-SemiBold", letterSpacing: -1.2 },
     noteHeaderMenu: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+    noteHeaderActions: { flexDirection: "row", gap: 8 },
     safe: { flex: 1, backgroundColor: clinicalTheme(false).page },
     loading: { flex: 1, alignItems: "center", justifyContent: "center" },
     intro: {
@@ -1202,42 +1165,14 @@ const styles = StyleSheet.create(
       flex: 1,
       backgroundColor: "#0A0A0A",
     },
-    page: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 38, gap: 16 },
+    page: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 38, gap: 16 },
     pageUnderFloatingNav: { paddingBottom: 110 },
     floatingNavLayer: { position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center", paddingBottom: 6 },
     floatingNav: { flexDirection: "row", width: "86%", maxWidth: 380, minHeight: 58, borderRadius: 999, padding: 4, borderWidth: StyleSheet.hairlineWidth, shadowColor: "#000000", shadowOpacity: 0.25, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
     floatingNavContent: { alignItems: "center", justifyContent: "center", gap: 2 },
     floatingNavIcon: { width: 20, height: 20, lineHeight: 20, includeFontPadding: false, textAlign: "center" },
-    floatingNavText: { fontSize: 11, fontFamily: "Pretendard-Medium", includeFontPadding: false, textAlign: "center" },
+    floatingNavText: { fontSize: TYPE.caption, fontFamily: "Pretendard-Medium", includeFontPadding: false, textAlign: "center" },
     disabledButton: { opacity: 0.62 },
-    settingsTitle: { color: "#1C1C1E", fontSize: 21, fontWeight: "900" },
-    settingsLabel: {
-      color: "#636366",
-      fontSize: 12,
-      fontWeight: "800",
-      marginBottom: 1,
-    },
-    pageHeading: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 9,
-      marginBottom: 12,
-    },
-    modeOption: {
-      minHeight: 66,
-      borderRadius: 13,
-      borderWidth: 1,
-      borderColor: "#D1D1D6",
-      backgroundColor: "#F9F9FB",
-      paddingHorizontal: 14,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      marginBottom: 8,
-    },
-    modeText: { flex: 1 },
-    modeTitle: { color: "#1C1C1E", fontSize: 15, fontWeight: "900" },
-    modeCaption: { color: "#8E8E93", fontSize: 11, marginTop: 3 },
     cameraPage: { flex: 1, backgroundColor: "#07110F" },
     cameraOverlay: {
       flex: 1,
@@ -1263,8 +1198,8 @@ const styles = StyleSheet.create(
     },
     cameraTitle: {
       color: "#FFFFFF",
-      fontSize: 17,
-      fontWeight: "900",
+      fontSize: TYPE.section,
+      fontFamily: "Pretendard-Medium",
       textShadowColor: "rgba(0,0,0,0.7)",
       textShadowRadius: 4,
     },
@@ -1279,15 +1214,16 @@ const styles = StyleSheet.create(
     },
     guideText: {
       color: "#FFFFFF",
-      fontSize: 15,
-      fontWeight: "800",
+      fontSize: TYPE.sub,
+      fontFamily: "Pretendard-Medium",
       marginTop: 16,
       textShadowColor: "rgba(0,0,0,0.8)",
       textShadowRadius: 4,
     },
     guideSub: {
       color: "#E5E5EA",
-      fontSize: 12,
+      fontSize: TYPE.sub,
+      fontFamily: "Pretendard-Regular",
       marginTop: 6,
       textShadowColor: "rgba(0,0,0,0.8)",
       textShadowRadius: 4,
@@ -1307,8 +1243,7 @@ const styles = StyleSheet.create(
       alignItems: "center",
       justifyContent: "center",
     },
-  }),
-);
+});
 const darkStyles = StyleSheet.create({
   appBackground: { backgroundColor: clinicalTheme(true).page },
   eraserSizeBar: { backgroundColor: clinicalTheme(true).surface },

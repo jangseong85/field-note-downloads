@@ -64,7 +64,7 @@ test("requested helper copy and privacy footer are removed", () => {
   }
   const app = read("App.tsx");
   assert.ok(!app.includes('"현장 기록"'));
-  assert.match(app, /activeTab !== "memo" && <Text style=\{\[styles\.noteTitle/);
+  assert.match(app, /activeTab === "settings" && <Text style=\{\[styles\.noteTitle/);
 });
 test("date and memo share field surfaces; dates open an explicit wheel editor", () => {
   for (const file of ["src/DateTimeFields.tsx", "src/ResizableMemoInput.tsx"]) {
@@ -77,7 +77,7 @@ test("date and memo share field surfaces; dates open an explicit wheel editor", 
 test("birth date and age share the same entry row and input typography", () => {
   const source = read("src/PatientNoteScreen.tsx");
   assert.match(source, /<View style=\{s.birthEntry\}>/);
-  assert.match(source, /age: \{\s*fontSize: 16,\s*fontFamily: "Pretendard-Regular"/);
+  assert.match(source, /age: \{\s*fontSize: TYPE\.body,\s*fontFamily: "Pretendard-Regular"/);
   assert.match(source, /borderLeftColor: t.border/);
   assert.doesNotMatch(source, /s.sexOption|s.sexText/);
 });
@@ -101,10 +101,10 @@ test("vital entries use large centered numbers with label above and unit below",
   const block = app.slice(app.indexOf("<View style={s.vitalsBoard}>"), app.indexOf("{map !== null"));
   assert.ok(block.indexOf("s.vitalLabel") < block.indexOf("<ClinicalInput"));
   assert.ok(block.indexOf("s.unit") > block.indexOf("<ClinicalInput"));
-  assert.match(app, /vitalInput: \{[^}]*textAlign: "center"[^}]*fontSize: 28/);
-  assert.match(app, /bloodPressureInput: \{\s*fontSize: 24/);
+  assert.match(app, /vitalInput: \{[^}]*textAlign: "center"[^}]*fontSize: TYPE\.display/);
+  assert.match(app, /bloodPressureInput: \{\s*fontSize: TYPE\.numeric/);
   assert.match(app, /!form\[vital.key\] && s.vitalPlaceholder/);
-  assert.match(app, /vitalPlaceholder: \{\s*fontSize: 16/);
+  assert.match(app, /vitalPlaceholder: \{\s*fontSize: TYPE\.body/);
   assert.match(block, /borderColor:\s*focusedVital === vital.key \? t.accent : "transparent"/);
   assert.match(block, /fontScale > 1.7/);
   assert.doesNotMatch(block, /textAlign: "right"/);
@@ -133,4 +133,15 @@ test("every translucent popup dims what is behind it through one scrim", () => {
     assert.match(source, /scrim\("modal", (p\.)?isDark\)/, file);
     assert.doesNotMatch(source, /rgba\(0,\s*0,\s*0,\s*\.?0?\.4/, file);
   }
+});
+test("type roles: six sizes, text size scales only font size and line height", () => {
+  const { TYPE, TEXT_SIZES, scaleStyles, scaleType, isTextSize } = require("./load-ts.cjs")("design", { react: { createContext: v => ({ v }), useContext: c => c.v, useMemo: f => f() }, "react-native": { StyleSheet: { create: x => x } } });
+  assert.deepEqual(TYPE, { display: 28, numeric: 24, section: 18, body: 16, sub: 14, caption: 12 });
+  assert.deepEqual(TEXT_SIZES, { small: 0.9, medium: 1, large: 1.15 });
+  assert.equal(scaleType(0.9).caption, 11, "small text never drops below 11");
+  const scaled = scaleStyles({ a: { fontSize: 16, lineHeight: 22, padding: 12, minHeight: 48 } }, 1.15);
+  assert.deepEqual(scaled.a, { fontSize: 18, lineHeight: 25, padding: 12, minHeight: 48 });
+  assert.ok(isTextSize("large") && !isTextSize("huge"));
+  for (const file of ["App.tsx", ...fs.readdirSync(path.join(__dirname, "../src")).filter(name => name.endsWith(".tsx")).map(name => `src/${name}`)])
+    assert.doesNotMatch(read(file), /fontSize: \d/, `${file} uses a type role instead of a literal font size`);
 });

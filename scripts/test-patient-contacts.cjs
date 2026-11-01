@@ -12,6 +12,7 @@ function harness() {
   const React = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
     useState: initial => { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], next => state[i] = next]; },
+    createContext: value => ({ value }), useContext: context => context.value, useMemo: fn => fn(),
   };
   const module = { exports: {} };
   const source = ts.transpileModule(read("src/PatientContacts.tsx"), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true, target: ts.ScriptTarget.ES2020 } }).outputText;
@@ -24,6 +25,11 @@ function harness() {
     if (name === "./NoteDialogs") return { NoteModal: "Dialog" };
     if (name === "./clinicalTheme") return { clinicalTheme: () => ({}), scrim: () => "rgba(0,0,0,0.4)" };
     if (name === "./phoneNumber") return phoneModule.exports;
+    if (name === "./design") {
+      const m = { exports: {} };
+      new Function("require", "module", "exports", ts.transpileModule(read("src/design.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(ref => ref === "react" ? React : ref === "react-native" ? { StyleSheet: { create: x => x } } : undefined, m, m.exports);
+      return m.exports;
+    }
     if (name === "./terms") { const m = { exports: {} }; new Function("module", "exports", ts.transpileModule(read("src/terms.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(m, m.exports); return m.exports; }
     throw Error(name);
   }, module, module.exports);

@@ -5,6 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { clinicalTheme, scrim } from "./clinicalTheme";
 import { HISTORY_GROUPS, toggleHistoryItem } from "./historyOptions";
 import { NoteModal } from "./NoteDialogs";
+import { TYPE, makeStyles } from "./design";
 
 type Props = {
   visible: boolean;
@@ -18,6 +19,7 @@ type Props = {
 
 /** Edits a draft; only ✓ writes it back. Close, backdrop and back cancel. */
 export default function HistorySheet(p: Props) {
+  const s = useS();
   const t = clinicalTheme(p.isDark);
   const [draft, setDraft] = useState<string[]>(p.history);
   useEffect(() => {
@@ -122,7 +124,7 @@ export default function HistorySheet(p: Props) {
     </NoteModal>
   );
 }
-const s = StyleSheet.create({
+const useS = makeStyles({
   backdrop: {
     flex: 1,
     justifyContent: "flex-end",
@@ -153,7 +155,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 17, fontFamily: "Pretendard-SemiBold" },
+  title: { fontSize: TYPE.body, fontFamily: "Pretendard-SemiBold" },
   content: { paddingBottom: 20 },
   group: {
     flexDirection: "row",
@@ -169,6 +171,6 @@ const s = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 6,
   },
-  chipText: { fontSize: 14, fontFamily: "Pretendard-Regular" },
+  chipText: { fontSize: TYPE.sub, fontFamily: "Pretendard-Regular" },
   chipSelected: { fontFamily: "Pretendard-SemiBold" },
 });

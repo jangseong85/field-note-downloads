@@ -20,6 +20,7 @@ import {
   View,
 } from "react-native";
 import { clinicalTheme, scrim } from "./clinicalTheme";
+import { TYPE, makeStyles } from "./design";
 
 type Request = {
   id: number;
@@ -152,6 +153,7 @@ function DialogPanel({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const styles = useStyles();
   const t = clinicalTheme(isDark);
   return (
     <View style={[styles.stage, { backgroundColor: scrim("modal", isDark) }]}>
@@ -209,6 +211,7 @@ export function NoteDialogHost({ isDark }: { isDark: boolean }) {
   return <NoteAlertPanel isDark={isDark} />;
 }
 export function NoteAlertPanel({ isDark }: { isDark: boolean }) {
+  const styles = useStyles();
   const { queue, dismiss, alert } = useDialogs();
   const handled = useRef<number | null>(null);
   const current = queue[0];
@@ -286,7 +289,7 @@ export function NoteAlertPanel({ isDark }: { isDark: boolean }) {
     </Modal>
   );
 }
-const styles = StyleSheet.create({
+const useStyles = makeStyles({
   stage: {
     flex: 1,
     justifyContent: "center",
@@ -302,12 +305,12 @@ const styles = StyleSheet.create({
   },
   content: { padding: 22, gap: 16 },
   title: {
-    fontSize: 19,
+    fontSize: TYPE.section,
     fontFamily: "Pretendard-SemiBold",
     textAlign: "center",
   },
   message: {
-    fontSize: 14,
+    fontSize: TYPE.sub,
     lineHeight: 22,
     fontFamily: "Pretendard-Regular",
     textAlign: "center",
@@ -322,7 +325,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   actionText: {
-    fontSize: 16,
+    fontSize: TYPE.body,
     fontFamily: "Pretendard-Medium",
     textAlign: "center",
   },

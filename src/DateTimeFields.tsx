@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import {
   AppState,
   Pressable,
-  StyleSheet,
   Text,
   View,
   useWindowDimensions,
@@ -22,6 +21,7 @@ import {
 import { ClinicalField, ClinicalInput } from "./ClinicalControls";
 import DateTimeWheelPicker from "./DateTimeWheelPicker";
 import { clinicalTheme } from "./clinicalTheme";
+import { TYPE, makeStyles } from "./design";
 
 export default function DateTimeFields({
   title,
@@ -44,6 +44,7 @@ export default function DateTimeFields({
   medical?: boolean;
   useWheelPicker?: boolean;
 }) {
+  const styles = useStyles();
   const [picker, setPicker] = useState<"date" | "time" | null>(null);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -241,18 +242,18 @@ export default function DateTimeFields({
     </View>
   );
 }
-const styles = StyleSheet.create({
+const useStyles = makeStyles({
   section: { gap: 8, marginBottom: 14 },
   heading: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  title: { fontFamily: "Pretendard-Medium", fontSize: 13 },
+  title: { fontFamily: "Pretendard-Medium", fontSize: TYPE.sub },
   actions: { flexDirection: "row", alignItems: "center", gap: 12 },
   elapsed: {
     fontFamily: "Pretendard-Regular",
-    fontSize: 13,
+    fontSize: TYPE.sub,
     fontVariant: ["tabular-nums"],
     paddingHorizontal: 2,
   },
@@ -265,7 +266,7 @@ const styles = StyleSheet.create({
   dateInput: { flex: 1, paddingHorizontal: 12 },
   value: {
     fontFamily: "Pretendard-Regular",
-    fontSize: 16,
+    fontSize: TYPE.body,
     includeFontPadding: false,
     fontVariant: ["tabular-nums"],
   },
@@ -273,7 +274,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderLeftWidth: 1,
     fontFamily: "Pretendard-Regular",
-    fontSize: 16,
+    fontSize: TYPE.body,
   },
   timeInput: { textAlign: "center", paddingHorizontal: 6, paddingVertical: 16 },
   now: {
@@ -283,6 +284,6 @@ const styles = StyleSheet.create({
     gap: 5,
     alignItems: "center",
   },
-  nowText: { fontFamily: "Pretendard-Medium", fontSize: 13 },
-  error: { fontSize: 12, fontFamily: "Pretendard-Regular" },
+  nowText: { fontFamily: "Pretendard-Medium", fontSize: TYPE.sub },
+  error: { fontSize: TYPE.caption, fontFamily: "Pretendard-Regular" },
 });

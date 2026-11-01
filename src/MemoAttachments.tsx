@@ -7,7 +7,6 @@ import {
   Pressable,
   useWindowDimensions,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -28,8 +27,7 @@ import { createMediaSaveTask, MediaSaveTask, runMediaSave } from "./mediaSave";
 import { clinicalTheme } from "./clinicalTheme";
 import { RecordTabs } from "./ClinicalControls";
 import { NoteModal, useNoteAlert } from "./NoteDialogs";
-import SendPhotosSheet from "./SendPhotosSheet";
-import type { SmsSource } from "./smsMessage";
+import { TYPE, makeStyles } from "./design";
 
 export type MemoAttachment = {
   id: string;
@@ -66,8 +64,6 @@ export default function MemoAttachments({
   onAppend,
   onRemove,
   onBusyChange,
-  smsSource,
-  contacts,
 }: {
   attachments: MemoAttachment[];
   isDark: boolean;
@@ -75,9 +71,8 @@ export default function MemoAttachments({
   /** Removes the attachment from the saved record, then deletes its file. */
   onRemove: (attachment: MemoAttachment) => Promise<void>;
   onBusyChange: (busy: boolean) => void;
-  smsSource: Omit<SmsSource, "photoCount">;
-  contacts: { label: string; phone: string }[];
 }) {
+  const styles = useStyles();
   const Alert = { alert: useNoteAlert() };
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recordingState = useAudioRecorderState(recorder, 250);
@@ -92,7 +87,6 @@ export default function MemoAttachments({
   const [cameraReady, setCameraReady] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const viewerScroll = useRef<ScrollView>(null);
-  const [smsOpen, setSmsOpen] = useState(false);
   const { width: screenWidth } = useWindowDimensions();
   const photos = attachments.filter((item) => item.kind === "photo");
   const recordings = attachments.filter((item) => item.kind === "audio");
@@ -568,27 +562,6 @@ export default function MemoAttachments({
           })}
         </>
       )}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="사진과 기록을 문자로 보내기"
-        disabled={recording || working}
-        onPress={() => setSmsOpen(true)}
-        style={({ pressed }) => [
-          styles.smsButton,
-          { backgroundColor: t.field, opacity: recording || working ? 0.4 : pressed ? 0.6 : 1 },
-        ]}
-      >
-        <Ionicons name="chatbubble-ellipses-outline" size={18} color={accent} />
-        <Text style={[styles.smsText, { color: accent }]}>문자로 보내기</Text>
-      </Pressable>
-      <SendPhotosSheet
-        visible={smsOpen}
-        isDark={isDark}
-        photos={photos}
-        source={smsSource}
-        contacts={contacts}
-        onClose={() => setSmsOpen(false)}
-      />
       <NoteModal
         visible={cameraVisible}
         onRequestClose={() => void closeCamera()}
@@ -709,14 +682,14 @@ export default function MemoAttachments({
     </View>
   );
 }
-const styles = StyleSheet.create({
+const useStyles = makeStyles({
   toolsHeading: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 10,
   },
-  toolsTitle: { fontSize: 13, fontFamily: "Pretendard-Medium" },
+  toolsTitle: { fontSize: TYPE.sub, fontFamily: "Pretendard-Medium" },
   actions: { flexDirection: "row", gap: 8 },
   toolIcon: {
     width: 30,
@@ -726,7 +699,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   toolCopy: { minWidth: 0, gap: 2 },
-  toolDetail: { fontSize: 11, fontFamily: "Pretendard-Regular" },
+  toolDetail: { fontSize: TYPE.caption, fontFamily: "Pretendard-Regular" },
   action: {
     flex: 1,
     flexDirection: "row",
@@ -737,9 +710,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 26,
   },
-  actionText: { fontSize: 15, fontFamily: "Pretendard-Medium" },
+  actionText: { fontSize: TYPE.sub, fontFamily: "Pretendard-Medium" },
   segment: { marginTop: 14 },
-  groupLabel: { fontSize: 12, fontFamily: "Pretendard-Medium", marginTop: 14, marginBottom: 6 },
+  groupLabel: { fontSize: TYPE.caption, fontFamily: "Pretendard-Medium", marginTop: 14, marginBottom: 6 },
   photoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   photoCell: { width: "32%", aspectRatio: 1, borderRadius: 12, overflow: "hidden" },
   photo: { width: "100%", height: "100%" },
@@ -752,26 +725,16 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: "rgba(0,0,0,0.5)",
   },
-  photoBadgeText: { fontSize: 11, color: "#FFFFFF", fontFamily: "Pretendard-Medium", fontVariant: ["tabular-nums"] },
+  photoBadgeText: { fontSize: TYPE.caption, color: "#FFFFFF", fontFamily: "Pretendard-Medium", fontVariant: ["tabular-nums"] },
   recording: { flexDirection: "row", alignItems: "center", borderRadius: 14, marginTop: 6, paddingHorizontal: 4 },
   recordingPlay: { width: 44, height: 52, alignItems: "center", justifyContent: "center" },
   recordingBody: { flex: 1, gap: 6, paddingVertical: 10 },
   recordingMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  recordingTime: { fontSize: 14, fontFamily: "Pretendard-Medium", fontVariant: ["tabular-nums"] },
+  recordingTime: { fontSize: TYPE.sub, fontFamily: "Pretendard-Medium", fontVariant: ["tabular-nums"] },
   progressTrack: { height: 4, borderRadius: 2, overflow: "hidden" },
   progressFill: { height: 4, borderRadius: 2 },
-  smsButton: {
-    minHeight: 48,
-    marginTop: 14,
-    borderRadius: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  smsText: { fontSize: 15, fontFamily: "Pretendard-Medium" },
   zoomPage: { flexGrow: 1, justifyContent: "center" },
-  caption: { fontSize: 12, marginTop: 4 },
+  caption: { fontSize: TYPE.caption, marginTop: 4 },
   cameraPage: { flex: 1, backgroundColor: "#000000" },
   camera: { flex: 1 },
   modalHeader: {
@@ -787,7 +750,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalTitle: {
-    fontSize: 17,
+    fontSize: TYPE.body,
     color: "#FFFFFF",
     fontFamily: "Pretendard-Medium",
   },

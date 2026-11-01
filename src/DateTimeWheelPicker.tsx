@@ -20,6 +20,7 @@ import {
   wheelParts,
   WheelDraft,
 } from "./wheelDateTime";
+import { TYPE, makeStyles } from "./design";
 
 type Props = {
   visible: boolean;
@@ -50,6 +51,7 @@ function WheelPickerSession({
   onCancel,
   onApply,
 }: Props) {
+  const styles = useStyles();
   const t = clinicalTheme(isDark),
     { height, fontScale } = useWindowDimensions();
   const [draft, setDraft] = useState(() => wheelDraft(date, time));
@@ -188,7 +190,7 @@ function WheelPickerSession({
     </NoteModal>
   );
 }
-const styles = StyleSheet.create({
+const useStyles = makeStyles({
   stage: {
     flex: 1,
     justifyContent: "flex-end",
@@ -205,16 +207,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  title: { fontSize: 20, fontFamily: "Pretendard-SemiBold", flex: 1 },
+  title: { fontSize: TYPE.section, fontFamily: "Pretendard-SemiBold", flex: 1 },
   headerButton: {
     minHeight: 48,
     paddingHorizontal: 12,
     justifyContent: "center",
   },
-  buttonText: { fontSize: 16, fontFamily: "Pretendard-Medium" },
+  buttonText: { fontSize: TYPE.body, fontFamily: "Pretendard-Medium" },
   wheels: { flexDirection: "row", gap: 10 },
   summary: {
-    fontSize: 14,
+    fontSize: TYPE.sub,
     fontFamily: "Pretendard-Regular",
     textAlign: "center",
     fontVariant: ["tabular-nums"],

@@ -45,6 +45,12 @@ function harness(file, { os = "android" } = {}) {
     if (name === "./NoteDialogs" && file !== "src/NoteDialogs.tsx") return { NoteModal: "Modal" };
     if (name === "./RecordAffiliation") return { __esModule: true, default: "Affiliation" };
     if (name === "./SquishThemeSwitch") return { __esModule: true, default: "Switch" };
+    if (name === "./ClinicalControls" && file !== "src/ClinicalControls.tsx") return { RecordTabs: "RecordTabs" };
+    if (name === "./design") {
+      const m = { exports: {} };
+      new Function("require", "module", "exports", ts.transpileModule(read("src/design.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(ref => ref === "react" ? React : ref === "react-native" ? { StyleSheet: { create: x => x } } : undefined, m, m.exports);
+      return m.exports;
+    }
     if (name === "./controlGestures") {
       const m = { exports: {} };
       new Function("module", "exports", ts.transpileModule(read("src/controlGestures.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(m, m.exports);
@@ -210,8 +216,7 @@ test("memo and app use central dialogs, not the native Alert import", () => {
   const app = read("App.tsx");
   assert.match(app, /<NoteDialogProvider>/);
   assert.match(app, /<NoteDialogHost isDark=\{isDark\}/);
-  assert.equal((app.match(/<SquishThemeSwitch\b/g) || []).length, 3, "quick settings retain their three controls");
-  assert.equal((read("src/SettingsScreen.tsx").match(/<SquishThemeSwitch\b/g) || []).length, 4, "the settings screen offers the same three controls plus following the device theme");
+  assert.equal((read("src/SettingsScreen.tsx").match(/<SquishThemeSwitch\b/g) || []).length, 4, "settings: device theme, dark mode, wheel picker and medical terms");
   assert.doesNotMatch(app, /text: isDark \? "라이트 모드로 변경"/);
   assert.doesNotMatch(read("src/SquishThemeSwitch.tsx"), /Ionicons|sunny|moon/);
   assert.doesNotMatch(read("src/SquishThemeSwitch.tsx"), /useNativeDriver: true/);
@@ -271,41 +276,20 @@ test("record options popover sits under the ⋯ button inside the screen edges",
   assert.equal(popoverPosition({ x: 300, y: 60, width: 44, height: 44 }, 320).width, 288, "narrow screens keep 16pt edges");
   assert.equal(popoverPosition(null, 390).right, 16);
 });
-test("record options popover keeps Squish toggles, edits affiliation in place and resets after closing", () => {
+test("the ⋯ memo menu holds memo actions only and closes before the reset confirmation", () => {
   const h = harness("src/RecordOptionsPopover.tsx", { os: "ios" }), calls = [];
   const texts = node => !node || typeof node !== "object" ? (typeof node === "string" ? [node] : []) : Array.isArray(node) ? node.flatMap(texts) : texts(node.props?.children);
-  const pressableWith = (root, label) => find(root, "Pressable").find(n => texts(n).includes(label));
-  const props = {
-    visible: true, isDark: true, anchor: { x: 330, y: 60, width: 44, height: 44 }, affiliation: "화정119안전센터",
-    useWheelPicker: true, wheelPreferenceReady: true, showReset: true,
-    medicalTerms: false, onMedicalTermsChange: v => calls.push(`terms:${v}`),
-    onThemeChange: v => calls.push(`theme:${v}`), onWheelChange: v => calls.push(`wheel:${v}`),
-    onAffiliationSaved() {}, onReset: () => calls.push("reset"), onClose: () => calls.push("close"),
-  };
-  let root = h.render(h.exports.default, props);
-  const switches = find(root, "Switch");
-  assert.equal(switches.length, 3, "dark mode, wheel picker and medical terms stay Squish toggles");
-  assert.equal(switches[2].props.accessibilityLabel, "의학용어로 표시");
-  assert.equal(switches[2].props.onChange, props.onMedicalTermsChange);
-  assert.equal(switches[0].props.checked, true);
-  assert.equal(switches[0].props.onChange, props.onThemeChange);
-  assert.equal(switches[1].props.accessibilityLabel, "휠 피커 사용");
-  switches[1].props.onChange(false);
-  assert.ok(texts(root).includes("화정119안전센터"));
-  pressableWith(root, "환자 기록 전체 초기화").props.onPress();
-  assert.deepEqual(calls, ["wheel:false", "close", "reset"], "popover closes before the reset confirmation is queued");
-  assert.equal(pressableWith(h.render(h.exports.default, { ...props, showReset: false }), "환자 기록 전체 초기화"), undefined);
-  root = h.render(h.exports.default, props);
-  find(root, "Pressable").find(n => n.props.accessibilityLabel === "소속 설정").props.onPress();
-  root = h.render(h.exports.default, props);
-  assert.equal(find(root, "Affiliation").length, 1, "affiliation edits inside the same popover, no second modal");
-  assert.equal(find(root, "Switch").length, 0);
+  const props = { visible: true, isDark: true, anchor: { x: 330, y: 60, width: 44, height: 44 }, onReset: () => calls.push("reset"), onClose: () => calls.push("close") };
+  const root = h.render(h.exports.default, props);
+  assert.equal(find(root, "Switch").length, 0, "preferences live only on the settings tab");
+  find(root, "Pressable").find(n => texts(n).includes("환자 기록 전체 초기화")).props.onPress();
+  assert.deepEqual(calls, ["close", "reset"]);
 });
-test("iOS uses the record options popover; Android keeps the centred options dialog", () => {
+test("the ⋯ menu shows only on the record tabs and uses the same popover on both platforms", () => {
   const app = read("App.tsx");
-  assert.match(app, /Platform\.OS === "ios" \? \(\s*<RecordOptionsPopover/);
-  assert.match(app, /<CenteredDialog visible=\{optionsVisible\} isDark=\{isDark\} title="기록 옵션"/);
-  assert.match(app, /ref=\{optionsButtonRef\}[^>]*onPress=\{openOptions\}/);
+  assert.match(app, /\{activeTab !== "settings" && <View style=\{styles\.noteHeaderActions\}>[\s\S]*?<Pressable ref=\{optionsButtonRef\}[^>]*onPress=\{openOptions\}/);
+  assert.match(app, /<RecordOptionsPopover\s+visible=\{optionsVisible\}/);
+  assert.doesNotMatch(app, /<CenteredDialog|<SquishThemeSwitch/);
 });
 test("Squish toggles follow the surface: light mode never shows a white 'on' track on a white panel", () => {
   const h = harness("src/SquishThemeSwitch.tsx");
@@ -316,7 +300,7 @@ test("Squish toggles follow the surface: light mode never shows a white 'on' tra
   const source = read("src/SquishThemeSwitch.tsx");
   assert.match(source, /const palette = isDark \? config : SQUISH_LIGHT_COLORS/);
   assert.match(source, /outputRange: \[palette.trackColor, palette.trackOnColor\]/);
-  for (const file of ["App.tsx", "src/RecordOptionsPopover.tsx"]) {
+  for (const file of ["src/SettingsScreen.tsx"]) {
     const tags = read(file).match(/<SquishThemeSwitch[\s\S]*?\/>/g) || [];
     assert.ok(tags.length > 0);
     for (const tag of tags) assert.match(tag, /isDark=\{/, `${file}: ${tag.slice(0, 60)}`);
@@ -349,19 +333,11 @@ test("segment active copy aligns with the actual tab bounds when icon content gr
   labels.forEach(node=>assert.equal(flatten(node.props.style).height,72,"both layers center their content inside the same actual row height"));
 });
 
-test("home displays device affiliation and routes to memo/settings without mutating patient records", () => {
-  const h=harness("src/HomeScreen.tsx"), calls=[];
-  const root=h.render(h.exports.default,{isDark:false,sender:{affiliation:"테스트119안전센터",rank:"소방교",name:"대원"},onOpenMemo:()=>calls.push("memo"),onOpenSettings:()=>calls.push("settings")});
-  const text=find(root,"Text").map(node=>node.props.children.flat(Infinity).join("")).join(" ");
-  assert.match(text,/테스트119안전센터/);
-  assert.match(text,/소방교 대원/);
-  const buttons=find(root,"Pressable");
-  buttons.find(node=>node.props.accessibilityLabel==="환자 메모 열기").props.onPress();
-  buttons.find(node=>node.props.accessibilityLabel==="소속과 대원 정보 설정").props.onPress();
-  assert.deepEqual(calls,["memo","settings"]);
+test("the app opens on the patient tab and the header carries no affiliation", () => {
   const app=read("App.tsx");
-  assert.match(app,/useState<AppTab>\("home"\)/);
-  const header=app.slice(app.indexOf('<View style={styles.noteAppHeader}>'),app.indexOf('{activeTab === "home" ? ('));
+  assert.match(app,/useState<AppTab>\("patient"\)/);
+  assert.ok(!fs.existsSync(path.join(__dirname,"../src/HomeScreen.tsx")));
+  const header=app.slice(app.indexOf('<View style={styles.noteAppHeader}>'),app.indexOf('{activeTab !== "settings" ? ('));
   assert.doesNotMatch(header,/affiliation/);
 });
 
@@ -380,4 +356,8 @@ test("settings preserves all device preference callbacks and affiliation editing
   switches[3].props.onChange(false);
   find(root,"Affiliation")[0].props.onSaved({affiliation:"변경"});
   assert.deepEqual(calls,[["system",true],["theme",false],["terms",false],["sender",{affiliation:"변경"}]]);
+  const sizes=find(root,"RecordTabs");
+  assert.equal(sizes.length,1);
+  assert.deepEqual(sizes[0].props.options.map(option=>option.label),["작게","보통","크게"]);
+  assert.equal(sizes[0].props.selectedId,"medium");
 });

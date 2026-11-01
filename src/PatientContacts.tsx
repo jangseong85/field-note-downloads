@@ -7,6 +7,7 @@ import { NoteModal } from "./NoteDialogs";
 import { clinicalTheme, scrim } from "./clinicalTheme";
 import { formatPhoneNumber } from "./phoneNumber";
 import { terms } from "./terms";
+import { TYPE, makeStyles, useType } from "./design";
 
 export const GUARDIAN_RELATIONS = [
   "부모",
@@ -29,6 +30,9 @@ export default function PatientContacts({
   form: Record<ContactKey, string>;
   onUpdate: (key: ContactKey, value: string) => void;
 }) {
+  const sheet = useSheet();
+  const rows = useRows();
+  const type = useType();
   const t = clinicalTheme(isDark);
   const L = terms(medical);
   const [open, setOpen] = useState(false);
@@ -36,7 +40,7 @@ export default function PatientContacts({
   const [relation, setRelation] = useState("");
   const labelStyle = {
     color: t.muted,
-    fontSize: 13,
+    fontSize: type.sub,
     fontFamily: "Pretendard-Medium",
   };
   return (
@@ -132,7 +136,7 @@ export default function PatientContacts({
                   <Text
                     style={{
                       color: relation === item ? t.surface : t.ink,
-                      fontSize: 15,
+                      fontSize: type.sub,
                       fontFamily: relation === item ? "Pretendard-SemiBold" : "Pretendard-Regular",
                     }}
                   >
@@ -164,23 +168,23 @@ export default function PatientContacts({
     </View>
   );
 }
-const sheet = StyleSheet.create({
+const useSheet = makeStyles({
   backdrop: { flex: 1, justifyContent: "flex-end" },
   body: { borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 16, paddingBottom: 16 },
   grabber: { width: 36, height: 5, borderRadius: 3, alignSelf: "center", marginTop: 8 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8 },
   round: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  title: { fontSize: 17, fontFamily: "Pretendard-SemiBold" },
+  title: { fontSize: TYPE.body, fontFamily: "Pretendard-SemiBold" },
   label: { marginTop: 12, marginBottom: 8, marginHorizontal: 4 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { minHeight: 44, paddingHorizontal: 16, borderRadius: 22, justifyContent: "center" },
   clear: { position: "absolute", right: 4, top: 0, bottom: 0, width: 44, alignItems: "center", justifyContent: "center" },
 });
-const rows = StyleSheet.create({
+const useRows = makeStyles({
   card: { borderRadius: 12, paddingHorizontal: 14, marginTop: 12 },
   row: { flexDirection: "row", alignItems: "center", minHeight: 52, gap: 10 },
   label: { width: 92, justifyContent: "center", minHeight: 44 },
-  caption: { fontSize: 11, marginTop: 2, fontFamily: "Pretendard-Regular" },
+  caption: { fontSize: TYPE.caption, marginTop: 2, fontFamily: "Pretendard-Regular" },
   input: { flex: 1, paddingHorizontal: 0 },
   separator: { height: StyleSheet.hairlineWidth },
 });

@@ -1,9 +1,17 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import RecordAffiliation from "./RecordAffiliation";
 import SquishThemeSwitch from "./SquishThemeSwitch";
+import { RecordTabs } from "./ClinicalControls";
 import { clinicalTheme } from "./clinicalTheme";
 import type { SenderInfo } from "./smsMessage";
+import { TYPE, makeStyles, useTextSize, type TextSize } from "./design";
+
+const TEXT_SIZE_OPTIONS: { id: TextSize; label: string }[] = [
+  { id: "small", label: "작게" },
+  { id: "medium", label: "보통" },
+  { id: "large", label: "크게" },
+];
 
 type Props = {
   isDark: boolean;
@@ -19,6 +27,8 @@ type Props = {
 };
 
 export default function SettingsScreen(p: Props) {
+  const styles = useStyles();
+  const textSize = useTextSize();
   const t = clinicalTheme(p.isDark);
   return <View style={styles.page}>
     <View style={[styles.card, { backgroundColor: t.surface }]}>
@@ -27,6 +37,11 @@ export default function SettingsScreen(p: Props) {
     </View>
     <View style={[styles.card, { backgroundColor: t.surface }]}>
       <Text style={[styles.heading, { color: t.ink }]}>화면 · 입력 방식</Text>
+      <View style={[styles.sizeRow, { backgroundColor: t.field }]}>
+        <Text style={[styles.label, { color: t.ink }]}>글자 크기</Text>
+        <RecordTabs isDark={p.isDark} label="글자 크기" selectionRole="radio" options={TEXT_SIZE_OPTIONS}
+          selectedId={textSize.size} onSelect={id => textSize.setSize(id as TextSize)} />
+      </View>
       <View style={[styles.row, { backgroundColor: t.field }]}>
         <View style={styles.labelBlock}>
           <Text style={[styles.label, { color: t.ink }]}>기기 화면 모드 따르기</Text>
@@ -63,12 +78,13 @@ export default function SettingsScreen(p: Props) {
   </View>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles({
   page: { gap: 16 },
   card: { borderRadius: 16, padding: 16, gap: 12 },
-  heading: { fontSize: 18, lineHeight: 25, fontFamily: "Pretendard-Medium", marginBottom: 4 },
+  heading: { fontSize: TYPE.section, lineHeight: 25, fontFamily: "Pretendard-Medium", marginBottom: 4 },
   row: { flexDirection: "row", alignItems: "center", minHeight: 64, borderRadius: 14, paddingLeft: 16 },
+  sizeRow: { borderRadius: 14, padding: 12, paddingLeft: 16, gap: 10 },
   labelBlock: { flex: 1, paddingVertical: 12, gap: 4 },
-  label: { fontSize: 16, lineHeight: 23, fontFamily: "Pretendard-Medium" },
-  detail: { fontSize: 13, lineHeight: 19, fontFamily: "Pretendard-Regular" },
+  label: { fontSize: TYPE.body, lineHeight: 23, fontFamily: "Pretendard-Medium" },
+  detail: { fontSize: TYPE.sub, lineHeight: 19, fontFamily: "Pretendard-Regular" },
 });

@@ -11,6 +11,7 @@ import {
   unknownAnswer,
   upsertReviewAnswer,
 } from "./reviewChecklist";
+import { TYPE, makeStyles } from "./design";
 
 type Props = {
   isDark: boolean;
@@ -23,6 +24,7 @@ type Props = {
 
 /** Optional, collapsed by default. One action per row: tap opens the answer field under it. */
 export default function ReviewChecklist(p: Props) {
+  const s = useS();
   const t = clinicalTheme(p.isDark);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -157,21 +159,21 @@ export default function ReviewChecklist(p: Props) {
     </View>
   );
 }
-const s = StyleSheet.create({
+const useS = makeStyles({
   card: { borderRadius: 14, paddingHorizontal: 12, marginBottom: 12 },
   header: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 8 },
-  title: { flex: 1, fontSize: 15, fontFamily: "Pretendard-Medium" },
-  count: { fontSize: 13, fontFamily: "Pretendard-Regular", fontVariant: ["tabular-nums"] },
-  group: { fontSize: 12, fontFamily: "Pretendard-Medium", marginTop: 6, marginBottom: 2 },
+  title: { flex: 1, fontSize: TYPE.sub, fontFamily: "Pretendard-Medium" },
+  count: { fontSize: TYPE.sub, fontFamily: "Pretendard-Regular", fontVariant: ["tabular-nums"] },
+  group: { fontSize: TYPE.caption, fontFamily: "Pretendard-Medium", marginTop: 6, marginBottom: 2 },
   row: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10, borderTopWidth: StyleSheet.hairlineWidth },
   dot: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
-  label: { fontSize: 14, fontFamily: "Pretendard-Regular" },
-  answer: { flex: 1, textAlign: "right", fontSize: 13, fontFamily: "Pretendard-Regular" },
+  label: { fontSize: TYPE.sub, fontFamily: "Pretendard-Regular" },
+  answer: { flex: 1, textAlign: "right", fontSize: TYPE.sub, fontFamily: "Pretendard-Regular" },
   editor: { paddingLeft: 30, paddingBottom: 10, gap: 8 },
   quick: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   quickButton: { minHeight: 36, paddingHorizontal: 12, borderRadius: 18, justifyContent: "center" },
-  quickText: { fontSize: 13, fontFamily: "Pretendard-Medium" },
+  quickText: { fontSize: TYPE.sub, fontFamily: "Pretendard-Medium" },
   inputRow: { flexDirection: "row", gap: 6, alignItems: "center" },
-  input: { flex: 1, minHeight: 44, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, fontSize: 15 },
+  input: { flex: 1, minHeight: 44, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, fontSize: TYPE.sub },
   confirm: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
 });

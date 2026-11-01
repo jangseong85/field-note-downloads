@@ -60,7 +60,7 @@ test("wheel preference offers numeric entry in all three contexts and persists s
   const fields = read("DateTimeFields.tsx"), screen = read("PatientNoteScreen.tsx");
   assert.match(app, /ems-log.wheel-picker.v1/);
   assert.match(app, /AsyncStorage.setItem\(WHEEL_PICKER_KEY, String\(enabled\)\)/);
-  assert.match(app, /accessibilityLabel="휠 피커 사용"/);
+  assert.match(fs.readFileSync(path.join(__dirname, "../src/SettingsScreen.tsx"), "utf8"), /accessibilityLabel="휠 피커 사용"/);
   assert.match(app, /useWheelPicker=\{useWheelPicker\}/);
   assert.equal((screen.match(/useWheelPicker=\{p.useWheelPicker\}/g) || []).length, 2);
   assert.match(screen, /p.useWheelPicker === false/);

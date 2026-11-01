@@ -7,7 +7,7 @@ function harness() {
   const React = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
     useState: initial => { const i = cursor++; if (!(i in hooks)) hooks[i] = typeof initial === "function" ? initial() : initial; return [hooks[i], v => hooks[i] = typeof v === "function" ? v(hooks[i]) : v]; },
-    useMemo: memo, useEffect: () => {},
+    useMemo: memo, useEffect: () => {}, createContext: value => ({ value }), useContext: context => context.value,
   };
   function load(name) {
     if (cache[name]) return cache[name];

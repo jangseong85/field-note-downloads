@@ -1,9 +1,24 @@
 const test=require("node:test");
 const assert=require("node:assert/strict");
 const {NAVIGATION_ITEMS,navigationItemHeight}=require("./load-ts.cjs")("navigation");
-test("home, memo and settings remain reachable with unique tab ids; MCI stays hidden until built",()=>{
-  assert.deepEqual(NAVIGATION_ITEMS.map(item=>item.id),["home","memo","settings"]);
-  assert.equal(new Set(NAVIGATION_ITEMS.map(item=>item.id)).size,3);
+test("five tabs split the record into patient, status, medication and records, then settings",()=>{
+  assert.deepEqual(NAVIGATION_ITEMS.map(item=>item.id),["patient","status","medication","records","settings"]);
+  assert.deepEqual(NAVIGATION_ITEMS.map(item=>item.label),["환자","상태","약물","기록","설정"]);
+  assert.equal(new Set(NAVIGATION_ITEMS.map(item=>item.id)).size,5);
+});
+test("each record tab shows only its part; SMS moved to the header",()=>{
+  const fs=require("node:fs"),path=require("node:path");
+  const read=name=>fs.readFileSync(path.join(__dirname,"..",name),"utf8");
+  const screen=read("src/PatientNoteScreen.tsx");
+  for(const section of ["patient","status","medication"]) assert.match(screen,new RegExp(`p\\.section === "${section}" && `));
+  assert.match(screen,/\{p\.section === "records" && <View style=\{\[s\.attachmentsSection/);
+  assert.match(screen,/<SendPhotosSheet\s+key=\{p\.activePatientId\}\s+visible=\{p\.smsOpen\}/);
+  assert.match(screen,/<MedicineBagAnalysis\b/);
+  const media=read("src/MemoAttachments.tsx");
+  assert.doesNotMatch(media,/SendPhotosSheet|문자로 보내기|MedicineBagAnalysis/);
+  const app=read("App.tsx");
+  assert.match(app,/accessibilityLabel="사진과 기록을 문자로 보내기" disabled=\{mediaBusy\} onPress=\{\(\) => setSmsOpen\(true\)\}/);
+  assert.match(app,/if \(activeTab === "patient"\) return false;\s+navigate\("patient"\);/);
 });
 test("compact navigation fits scaled labels without shrinking touch targets",()=>{
   assert.equal(navigationItemHeight(1),50);
