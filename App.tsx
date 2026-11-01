@@ -870,40 +870,40 @@ function HandwritingModal({
             )}
           </Pressable>
         </View>
-        <View
-          ref={canvasRef}
-          pointerEvents={saving || saveFailed ? "none" : "auto"}
-          collapsable={false}
-          style={[
-            styles.handwritingCanvas,
-            { backgroundColor: clinicalTheme(isDark).surface, borderColor: clinicalTheme(isDark).border },
-          ]}
-          {...panResponder.panHandlers}
-        >
-          {showBase && (
-            <Image
-              source={{ uri: initialUri }}
-              resizeMode="stretch"
-              style={StyleSheet.absoluteFill}
-            />
-          )}
-          <Svg width="100%" height="100%">
-            <InkPaths paths={paths} />
-            {stroke && <InkPath path={stroke} />}
-            {eraserEnabled && eraserCursor.visible && (
-              <Circle
-                cx={eraserCursor.x}
-                cy={eraserCursor.y}
-                r={eraserWidth / 2}
-                fill={
-                  isDark ? "rgba(103,210,188,0.12)" : "rgba(8,127,109,0.08)"
-                }
-                stroke={isDark ? "#FF6972" : "#C9232D"}
-                strokeWidth={1.5}
-                strokeDasharray="4 3"
+        {/* The frame stays outside the captured view so saved handwriting carries no border of its own. */}
+        <View style={[styles.handwritingCanvas, { borderColor: clinicalTheme(isDark).border }]}>
+          <View
+            ref={canvasRef}
+            pointerEvents={saving || saveFailed ? "none" : "auto"}
+            collapsable={false}
+            style={[styles.handwritingInk, { backgroundColor: clinicalTheme(isDark).surface }]}
+            {...panResponder.panHandlers}
+          >
+            {showBase && (
+              <Image
+                source={{ uri: initialUri }}
+                resizeMode="stretch"
+                style={StyleSheet.absoluteFill}
               />
             )}
-          </Svg>
+            <Svg width="100%" height="100%">
+              <InkPaths paths={paths} />
+              {stroke && <InkPath path={stroke} />}
+              {eraserEnabled && eraserCursor.visible && (
+                <Circle
+                  cx={eraserCursor.x}
+                  cy={eraserCursor.y}
+                  r={eraserWidth / 2}
+                  fill={
+                    isDark ? "rgba(103,210,188,0.12)" : "rgba(8,127,109,0.08)"
+                  }
+                  stroke={isDark ? "#FF6972" : "#C9232D"}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                />
+              )}
+            </Svg>
+          </View>
         </View>
         {eraserEnabled && (
           <EraserSizeSlider
@@ -1083,6 +1083,7 @@ const useStyles = makeStyles({
       borderWidth: 1,
       borderColor: "#D4DEDB",
     },
+    handwritingInk: { flex: 1 },
     handwritingTools: {
       flexDirection: "row",
       alignItems: "center",
