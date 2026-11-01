@@ -2,7 +2,7 @@
   "expo": {
     "name": "119 | FIELD NOTE",
     "slug": "ems-log",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "icon": "./assets/app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -17,7 +17,7 @@
     },
     "android": {
       "allowBackup": false,
-      "versionCode": 4,
+      "versionCode": 5,
       "package": "com.emslog.mobile",
       "permissions": [
         "CAMERA",
