@@ -10,6 +10,8 @@ type Props = {
   useWheelPicker: boolean;
   wheelPreferenceReady: boolean;
   medicalTerms: boolean;
+  followSystemTheme: boolean;
+  onFollowSystemThemeChange: (follow: boolean) => void;
   onThemeChange: (dark: boolean) => void;
   onWheelChange: (enabled: boolean) => void;
   onMedicalTermsChange: (enabled: boolean) => void;
@@ -27,8 +29,15 @@ export default function SettingsScreen(p: Props) {
       <Text style={[styles.heading, { color: t.ink }]}>화면 · 입력 방식</Text>
       <View style={[styles.row, { backgroundColor: t.field }]}>
         <View style={styles.labelBlock}>
+          <Text style={[styles.label, { color: t.ink }]}>기기 화면 모드 따르기</Text>
+          <Text style={[styles.detail, { color: t.muted }]}>{p.followSystemTheme ? "기기의 라이트·다크 설정을 따름" : "아래에서 직접 선택"}</Text>
+        </View>
+        <SquishThemeSwitch isDark={p.isDark} accessibilityLabel="기기 화면 모드 따르기" checked={p.followSystemTheme} onChange={p.onFollowSystemThemeChange} />
+      </View>
+      <View style={[styles.row, { backgroundColor: t.field }]}>
+        <View style={styles.labelBlock}>
           <Text style={[styles.label, { color: t.ink }]}>다크 모드</Text>
-          <Text style={[styles.detail, { color: t.muted }]}>{p.isDark ? "켜짐" : "꺼짐"}</Text>
+          <Text style={[styles.detail, { color: t.muted }]}>{p.isDark ? "켜짐" : "꺼짐"}{p.followSystemTheme ? " · 기기 설정" : ""}</Text>
         </View>
         <SquishThemeSwitch isDark={p.isDark} checked={p.isDark} onChange={p.onThemeChange} />
       </View>
@@ -46,6 +55,10 @@ export default function SettingsScreen(p: Props) {
         </View>
         <SquishThemeSwitch isDark={p.isDark} accessibilityLabel="의학용어로 표시" checked={p.medicalTerms} onChange={p.onMedicalTermsChange} />
       </View>
+    </View>
+    <View style={[styles.card, { backgroundColor: t.surface }]}>
+      <Text style={[styles.heading, { color: t.ink }]}>기록 보관</Text>
+      <Text style={[styles.detail, { color: t.muted }]}>환자 기록은 등록 후 24시간이 지나면 사진·녹취·필기·신분증 사진과 함께 이 기기에서 자동 삭제됩니다. 필요한 내용은 그 전에 전달해 주세요.</Text>
     </View>
   </View>;
 }

@@ -48,7 +48,8 @@ export type LegacyFormState = Partial<FormState> & {
 };
 
 export const STORAGE_KEY = "ems-log.current-patient.v1";
-export type PatientRecord = { id: string; form: FormState };
+/** `createdAt` (epoch ms) is missing on records saved before automatic expiry existed. */
+export type PatientRecord = { id: string; form: FormState; createdAt?: number };
 export type PatientWorkspace = { version: 2; activeId: string; patients: PatientRecord[] };
 export const EMPTY: FormState = {
   attachments: [],
@@ -140,7 +141,8 @@ export function restoreWorkspace(saved: string | null): PatientWorkspace {
     const patients = stored.patients.map(patient => {
       if (!patient || typeof patient.id !== "string" || !patient.id || ids.has(patient.id) || !patient.form || typeof patient.form !== "object") throw new Error("Invalid saved patient");
       ids.add(patient.id);
-      return { id: patient.id, form: migrateStoredForm(patient.form) };
+      const createdAt = (patient as { createdAt?: unknown }).createdAt;
+      return { id: patient.id, form: migrateStoredForm(patient.form), ...(typeof createdAt === "number" && Number.isFinite(createdAt) ? { createdAt } : {}) };
     });
     return { version: 2, activeId: patients.some(patient => patient.id === stored.activeId) ? stored.activeId : patients[0]!.id, patients };
   }
@@ -149,4 +151,26 @@ export function restoreWorkspace(saved: string | null): PatientWorkspace {
 
 export function patientFileUris(workspace: PatientWorkspace): string[] {
   return workspace.patients.flatMap(({ form }) => [form.idDocument?.uri, form.chiefComplaintDrawing, form.historyDrawing, ...form.attachments.map(item => item.uri)]).filter((uri): uri is string => !!uri);
+}
+
+/** Patient records, with their photos, recordings and drawings, are deleted 24 hours after creation. */
+export const PATIENT_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+export function isBlankForm(form: FormState): boolean {
+  return JSON.stringify(form) === JSON.stringify(migrateStoredForm({}));
+}
+
+/**
+ * Stamp unstamped (pre-expiry) records with `now` so they get a full 24 hours from the update,
+ * and drop records older than the retention period. An empty workspace gets one blank patient.
+ */
+export function planPatientExpiry(workspace: PatientWorkspace, now: number, blankId: string, maxAge = PATIENT_RETENTION_MS) {
+  const stamped = workspace.patients.map(patient =>
+    typeof patient.createdAt === "number" && patient.createdAt <= now ? patient : { ...patient, createdAt: now });
+  const removed = stamped.filter(patient => now - patient.createdAt! >= maxAge);
+  const kept = stamped.filter(patient => now - patient.createdAt! < maxAge);
+  const patients = kept.length ? kept : [{ id: blankId, form: migrateStoredForm({}), createdAt: now }];
+  const activeId = patients.some(patient => patient.id === workspace.activeId) ? workspace.activeId : patients[patients.length - 1]!.id;
+  const changed = removed.length > 0 || stamped.some((patient, index) => patient !== workspace.patients[index]);
+  return { changed, removed, next: { version: 2 as const, activeId, patients } };
 }

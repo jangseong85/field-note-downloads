@@ -1,9 +1,9 @@
 const test=require("node:test");
 const assert=require("node:assert/strict");
 const {NAVIGATION_ITEMS,navigationItemHeight}=require("./load-ts.cjs")("navigation");
-test("home, memo, MCI and settings remain reachable with unique tab ids",()=>{
-  assert.deepEqual(NAVIGATION_ITEMS.map(item=>item.id),["home","memo","mci","settings"]);
-  assert.equal(new Set(NAVIGATION_ITEMS.map(item=>item.id)).size,4);
+test("home, memo and settings remain reachable with unique tab ids; MCI stays hidden until built",()=>{
+  assert.deepEqual(NAVIGATION_ITEMS.map(item=>item.id),["home","memo","settings"]);
+  assert.equal(new Set(NAVIGATION_ITEMS.map(item=>item.id)).size,3);
 });
 test("compact navigation fits scaled labels without shrinking touch targets",()=>{
   assert.equal(navigationItemHeight(1),50);

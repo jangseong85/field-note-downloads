@@ -1,4 +1,4 @@
-import { emptyWorkspace, restoreWorkspace, STORAGE_KEY, type FormState, type PatientWorkspace } from "./patientWorkspace";
+import { emptyWorkspace, patientFileUris, planPatientExpiry, restoreWorkspace, STORAGE_KEY, type FormState, type PatientRecord, type PatientWorkspace } from "./patientWorkspace";
 import { updatePatientById } from "./patientUpdates";
 
 type Storage = { getItem(key: string): Promise<string | null>; setItem(key: string, value: string): Promise<unknown> };
@@ -12,7 +12,7 @@ export class PatientStorage {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private restoring: Promise<void> | null = null;
 
-  constructor(private storage: Storage, private onSaveError: () => void, private delay = 250) {}
+  constructor(private storage: Storage, private onSaveError: () => void, private delay = 250, private now: () => number = Date.now) {}
 
   getSnapshot = () => this.snapshot;
   subscribe = (listener: () => void) => {
@@ -70,7 +70,7 @@ export class PatientStorage {
     this.assertReady();
     if (this.snapshot.busy) return;
     const workspace = this.snapshot.workspace;
-    const patients = newForm ? [...workspace.patients, { id, form: newForm }] : workspace.patients;
+    const patients = newForm ? [...workspace.patients, { id, form: newForm, createdAt: this.now() }] : workspace.patients;
     if (!patients.some(patient => patient.id === id)) return;
     this.publish({ workspace: { ...workspace, activeId: id, patients } });
     this.scheduleSave();
@@ -116,5 +116,17 @@ export class PatientStorage {
     } finally {
       this.publish({ busy: false });
     }
+  }
+  /** Delete expired patients (see planPatientExpiry). Returns the removed records and their file URIs. */
+  async expire(blankId: string): Promise<{ removed: PatientRecord[]; uris: string[] }> {
+    if (this.snapshot.status !== "ready" || this.snapshot.busy) return { removed: [], uris: [] };
+    if (!planPatientExpiry(this.snapshot.workspace, this.now(), blankId).changed) return { removed: [], uris: [] };
+    let removed: PatientRecord[] = [];
+    await this.replace(current => {
+      const plan = planPatientExpiry(current, this.now(), blankId);
+      removed = plan.removed;
+      return plan.next;
+    });
+    return { removed, uris: patientFileUris({ version: 2, activeId: "", patients: removed }) };
   }
 }

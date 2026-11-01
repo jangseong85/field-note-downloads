@@ -30,9 +30,12 @@ import { WebView } from "react-native-webview";
 import {
   ActivityIndicator,
   Animated,
+  AppState,
+  BackHandler,
   Easing,
   Image,
   KeyboardAvoidingView,
+  Linking,
   NativeModules,
   PanResponder,
   Platform,
@@ -44,7 +47,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { migrateStoredForm, patientFileUris, type FormState } from "./src/patientWorkspace";
+import { isBlankForm, migrateStoredForm, patientFileUris, type FormState } from "./src/patientWorkspace";
 import { usePatientWorkspace } from "./src/usePatientWorkspace";
 import { usePatientFileCleanup } from "./src/usePatientFileCleanup";
 import { captureIdentityDocument } from "./src/identityCapture";
@@ -197,6 +200,43 @@ function FieldNoteApp() {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   };
 
+  // 24-hour automatic deletion runs only while no capture, recording or drawing is in progress.
+  const expiryBlocked = useRef(false);
+  expiryBlocked.current = scannerBusy || mediaBusy || cameraVisible || drawingTarget !== null || drawingSaveBusy.current;
+  const expirePatients = useRef<() => Promise<void>>(async () => undefined);
+  expirePatients.current = async () => {
+    if (expiryBlocked.current) return;
+    try {
+      const { removed, uris } = await store.expire(`patient-${Date.now()}`);
+      if (!removed.length) return;
+      await cleanupFiles(uris);
+      const recorded = removed.filter(patient => !isBlankForm(patient.form)).length;
+      if (recorded) Alert.alert("환자 기록 자동 삭제", `등록 후 24시간이 지난 환자 기록 ${recorded}건을 사진·녹취·필기와 함께 삭제했습니다.`);
+    } catch { /* Retried on the next check. */ }
+  };
+  useEffect(() => {
+    if (recoveryStatus !== "ready") return;
+    void expirePatients.current();
+    const timer = setInterval(() => void expirePatients.current(), 60 * 60_000);
+    const listener = AppState.addEventListener("change", state => { if (state === "active") void expirePatients.current(); });
+    return () => { clearInterval(timer); listener.remove(); };
+  }, [recoveryStatus]);
+
+  const backPress = useRef<() => boolean>(() => false);
+  backPress.current = () => {
+    if (mediaBusy) {
+      Alert.alert("기록 진행 중", "녹취를 중지하거나 촬영을 마친 후 이동해 주세요.");
+      return true;
+    }
+    if (activeTab === "home") return false;
+    navigate("home");
+    return true;
+  };
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => backPress.current());
+    return () => subscription.remove();
+  }, []);
+
   const selectPatient = (id?: string) => {
     if (recoveryStatus !== "ready" || scannerBusy || mediaBusy || drawingSaveBusy.current || store.getSnapshot().busy || drawingTarget || cameraVisible) return;
     store.select(id ?? `patient-${Date.now()}`, id ? undefined : migrateStoredForm({}));
@@ -223,8 +263,8 @@ function FieldNoteApp() {
 
   const update = (key: keyof FormState, value: string) =>
     setForm((previous) => ({ ...previous, [key]: value }));
-  const changeTheme = (dark: boolean) => {
-    const nextMode = dark ? "dark" : "light";
+  const changeTheme = (dark: boolean) => changeThemeMode(dark ? "dark" : "light");
+  const changeThemeMode = (nextMode: "system" | "light" | "dark") => {
     setThemeMode(nextMode);
     void AsyncStorage.setItem(THEME_KEY, nextMode).catch(() => Alert.alert("화면 설정", "화면 모드 설정을 저장하지 못했습니다. 다시 선택해 주세요."));
   };
@@ -329,10 +369,11 @@ function FieldNoteApp() {
       ? cameraPermission
       : await requestCameraPermission();
     if (!permission.granted) {
-      Alert.alert(
-        "카메라 권한 필요",
-        "신분증을 촬영하려면 카메라 접근을 허용해 주세요.",
-      );
+      if (permission.canAskAgain) Alert.alert("카메라 권한 필요", "신분증을 촬영하려면 카메라 접근을 허용해 주세요.");
+      else Alert.alert("카메라 권한 필요", "카메라 접근이 꺼져 있습니다. 설정에서 카메라를 허용해 주세요.", [
+        { text: "닫기", style: "cancel" },
+        { text: "설정 열기", onPress: () => void Linking.openSettings() },
+      ]);
       return;
     }
     setCameraVisible(true);
@@ -350,15 +391,35 @@ function FieldNoteApp() {
       if (!photo?.uri) return;
       NativeModules.SoftShutter?.play();
       setCameraVisible(false);
-      const identity = await captureIdentityDocument(photo.uri, viewport, guide, value => commitPatientUpdate(patientId, previous => ({
-        ...previous,
-        idDocument: value.document,
-        ...(value.document.name ? { name: value.document.name } : {}),
-        ...(value.document.birthDate ? { birthDate: value.document.birthDate } : {}),
-        ...(value.gender ? { gender: value.gender } : {}),
-      })), cleanupFiles);
+      // Recognised values fill empty fields only; values the paramedic typed are replaced after confirmation.
+      let conflicts: { key: "name" | "birthDate" | "gender"; label: string; typed: string; read: string }[] = [];
+      const identity = await captureIdentityDocument(photo.uri, viewport, guide, value => commitPatientUpdate(patientId, previous => {
+        const fill: Partial<FormState> = {};
+        conflicts = [];
+        const candidates = [
+          { key: "name" as const, label: "성명", read: value.document.name, same: (typed: string, read: string) => typed.trim() === read, show: (v: string) => v },
+          { key: "birthDate" as const, label: "생년월일", read: value.document.birthDate, same: (typed: string, read: string) => typed.replace(/\D/g, "") === read.replace(/\D/g, ""), show: (v: string) => displayBirthDate(v) },
+          { key: "gender" as const, label: "성별", read: value.gender, same: (typed: string, read: string) => typed === read, show: (v: string) => v },
+        ];
+        for (const { key, label, read, same, show } of candidates) {
+          if (!read) continue;
+          if (!previous[key].trim()) fill[key] = read;
+          else if (!same(previous[key], read)) conflicts.push({ key, label, typed: show(previous[key]), read });
+        }
+        return { ...previous, idDocument: value.document, ...fill };
+      }), cleanupFiles);
       await deleteLocalFile(previousUri ?? null);
-      if (!identity.document.name && !identity.document.birthDate) {
+      if (conflicts.length) {
+        const changes = conflicts;
+        Alert.alert(
+          "입력값과 인식 결과가 다릅니다",
+          changes.map(item => `${item.label}: 입력 ${item.typed} → 인식 ${item.key === "birthDate" ? displayBirthDate(item.read) : item.read}`).join("\n"),
+          [
+            { text: "입력값 유지", style: "cancel" },
+            { text: "인식값으로 변경", onPress: () => void commitPatientUpdate(patientId, previous => ({ ...previous, ...Object.fromEntries(changes.map(item => [item.key, item.read])) })).catch(() => Alert.alert("변경 실패", "인식값을 저장하지 못했습니다. 입력값은 유지됩니다.")) },
+          ],
+        );
+      } else if (!identity.document.name && !identity.document.birthDate) {
         Alert.alert("자료는 저장했습니다", "성명과 생년월일은 인식하지 못했습니다. 빛 반사를 피해서 다시 촬영해 주세요.");
       } else {
         Alert.alert("인식 완료", `성명: ${identity.document.name ?? "인식 안 됨"}\n생년월일: ${displayBirthDate(identity.document.birthDate) || "인식 안 됨"}`);
@@ -405,7 +466,7 @@ function FieldNoteApp() {
               <View style={styles.noteAppHeader}>
                 <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
                   <View style={styles.noteBrand}><Text style={[styles.noteBrandNumber, { color: clinicalTheme(isDark).brand }]}>119</Text><Text style={[styles.noteBrandText, { color: clinicalTheme(isDark).muted }, { fontSize: 12, letterSpacing: 1.2 }]}>FIELD NOTE</Text></View>
-                  {activeTab !== "memo" && <Text style={[styles.noteTitle, { color: clinicalTheme(isDark).ink }]}>{activeTab === "home" ? "홈" : activeTab === "settings" ? "설정" : "다수사상자"}</Text>}
+                  {activeTab !== "memo" && <Text style={[styles.noteTitle, { color: clinicalTheme(isDark).ink }]}>{activeTab === "home" ? "홈" : "설정"}</Text>}
                 </View>
                 <Pressable ref={optionsButtonRef} accessibilityRole="button" accessibilityLabel="화면 및 기록 옵션" onPress={openOptions} style={[styles.noteHeaderMenu, { borderRadius: 22, backgroundColor: clinicalTheme(isDark).surface, borderWidth: StyleSheet.hairlineWidth, borderColor: clinicalTheme(isDark).border }]}><Ionicons name="ellipsis-horizontal" size={20} color={clinicalTheme(isDark).ink} /></Pressable>
               </View>
@@ -435,10 +496,9 @@ function FieldNoteApp() {
               ) : activeTab === "settings" ? (
                 <SettingsScreen isDark={isDark} useWheelPicker={useWheelPicker} wheelPreferenceReady={wheelPreferenceReady}
                   medicalTerms={medicalTerms} onThemeChange={changeTheme}
+                  followSystemTheme={themeMode === "system"} onFollowSystemThemeChange={follow => changeThemeMode(follow ? "system" : isDark ? "dark" : "light")}
                   onWheelChange={value => void changeWheelPreference(value)}
                   onMedicalTermsChange={value => void changeMedicalTerms(value)} onAffiliationSaved={setSender} />
-              ) : activeTab === "mci" ? (
-                <FuturePage isDark={isDark} />
               ) : null}
             </ScrollView>
           </KeyboardAvoidingView>
@@ -457,6 +517,12 @@ function FieldNoteApp() {
             initialUri={drawingTarget ? form[drawingTarget] : null}
             onClose={() => void closeDrawing()}
             onSave={saveDrawing}
+            onDelete={async () => {
+              const field = drawingTarget;
+              if (!field) return;
+              await deleteDrawing(field);
+              setDrawingTarget(null);
+            }}
           />
         </SafeAreaView>
         <NoteModal
@@ -586,26 +652,6 @@ function FieldNoteApp() {
   );
 }
 
-function FuturePage({ isDark }: { isDark: boolean }) {
-  return (
-    <View style={[styles.card, styles.futureCard, isDark && darkStyles.card]}>
-      <View style={styles.futureIcon}>
-        <Ionicons name="people-outline" size={32} color="#C9232D" />
-      </View>
-      <Text style={[styles.futureTitle, isDark && darkStyles.primaryText]}>
-        다수사상자
-      </Text>
-      <Text style={[styles.futureCaption, isDark && darkStyles.secondaryText]}>
-        환자 분류·번호·이송 현황을 관리할 수 있도록 준비된 화면입니다.
-      </Text>
-      <View style={[styles.futureBadge, isDark && darkStyles.softButton]}>
-        <Text style={[styles.futureBadgeText, isDark && darkStyles.accentText]}>
-          개발 예정
-        </Text>
-      </View>
-    </View>
-  );
-}
 function BottomNavigation({
   activeTab, isDark, onSelect, itemHeight,
 }: {
@@ -654,6 +700,7 @@ function HandwritingModal({
   initialUri,
   onClose,
   onSave,
+  onDelete,
 }: {
   visible: boolean;
   isDark: boolean;
@@ -661,11 +708,20 @@ function HandwritingModal({
   initialUri: string | null;
   onClose: () => void;
   onSave: (uri: string) => Promise<void>;
+  /** Saving after "모두 지우기" removed the saved drawing and nothing new was drawn. */
+  onDelete: () => Promise<void>;
 }) {
   const Alert = { alert: useNoteAlert() };
-  const [paths, setPaths] = useState<
-    { d: string; color: string; width: number }[]
-  >([]);
+  const [paths, setPaths] = useState<InkStroke[]>([]);
+  // The stroke being drawn lives in a ref and reaches the screen at most once per frame,
+  // so finished strokes are not re-rendered on every touch move.
+  const strokeRef = useRef<InkStroke | null>(null);
+  const strokeFrame = useRef<number | null>(null);
+  const [stroke, setStroke] = useState<InkStroke | null>(null);
+  const [baseCleared, setBaseCleared] = useState(false);
+  const showBase = !!initialUri && !baseCleared;
+  const hasInk = paths.length > 0 || stroke !== null;
+  const canSave = hasInk || !!initialUri;
   const [eraserEnabled, setEraserEnabled] = useState(false);
   const eraserEnabledRef = useRef(false);
   const [eraserWidth, setEraserWidth] = useState(44);
@@ -684,12 +740,14 @@ function HandwritingModal({
   const canvasColorRef = useRef(clinicalTheme(isDark).surface);
   inkColorRef.current = isDark ? "#FFFFFF" : "#132622";
   canvasColorRef.current = clinicalTheme(isDark).surface;
-  const activePath = useRef(-1);
   useEffect(() => {
     if (visible) {
       captureUri.current = null;
       setSaveFailed(false);
       setPaths([]);
+      strokeRef.current = null;
+      setStroke(null);
+      setBaseCleared(false);
       setEraserEnabled(false);
       eraserEnabledRef.current = false;
       setEraserCursor({ x: 0, y: 0, visible: false });
@@ -699,9 +757,28 @@ function HandwritingModal({
         const restored = Math.max(16, Math.min(200, parsed));
         setEraserWidth(restored);
         eraserWidthRef.current = restored;
-      });
+      }).catch(() => undefined);
     }
   }, [visible]);
+  const publishStroke = () => {
+    if (strokeFrame.current !== null) return;
+    strokeFrame.current = requestAnimationFrame(() => {
+      strokeFrame.current = null;
+      setStroke(strokeRef.current && { ...strokeRef.current });
+    });
+  };
+  const finishStroke = () => {
+    if (strokeFrame.current !== null) cancelAnimationFrame(strokeFrame.current);
+    strokeFrame.current = null;
+    const done = strokeRef.current;
+    strokeRef.current = null;
+    setStroke(null);
+    if (done) setPaths((previous) => [...previous, done]);
+  };
+  const finishStrokeRef = useRef(finishStroke);
+  finishStrokeRef.current = finishStroke;
+  const publishStrokeRef = useRef(publishStroke);
+  publishStrokeRef.current = publishStroke;
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -710,50 +787,42 @@ function HandwritingModal({
         const { locationX, locationY } = event.nativeEvent;
         if (eraserEnabledRef.current)
           setEraserCursor({ x: locationX, y: locationY, visible: true });
-        setPaths((previous) => {
-          activePath.current = previous.length;
-          return [
-            ...previous,
-            {
-              d: `M ${locationX.toFixed(1)} ${locationY.toFixed(1)}`,
-              color: eraserEnabledRef.current
-                ? canvasColorRef.current
-                : inkColorRef.current,
-              width: eraserEnabledRef.current ? eraserWidthRef.current : 3.2,
-            },
-          ];
-        });
+        strokeRef.current = {
+          d: `M ${locationX.toFixed(1)} ${locationY.toFixed(1)}`,
+          color: eraserEnabledRef.current
+            ? canvasColorRef.current
+            : inkColorRef.current,
+          width: eraserEnabledRef.current ? eraserWidthRef.current : 3.2,
+        };
+        publishStrokeRef.current();
       },
       onPanResponderMove: (event) => {
         const { locationX, locationY } = event.nativeEvent;
         if (eraserEnabledRef.current)
           setEraserCursor({ x: locationX, y: locationY, visible: true });
-        setPaths((previous) =>
-          previous.map((path, index) =>
-            index === activePath.current
-              ? {
-                  ...path,
-                  d: `${path.d} L ${locationX.toFixed(1)} ${locationY.toFixed(1)}`,
-                }
-              : path,
-          ),
-        );
+        if (!strokeRef.current) return;
+        strokeRef.current.d += ` L ${locationX.toFixed(1)} ${locationY.toFixed(1)}`;
+        publishStrokeRef.current();
       },
       onPanResponderRelease: () => {
-        activePath.current = -1;
+        finishStrokeRef.current();
         setEraserCursor((previous) => ({ ...previous, visible: false }));
       },
       onPanResponderTerminate: () => {
-        activePath.current = -1;
+        finishStrokeRef.current();
         setEraserCursor((previous) => ({ ...previous, visible: false }));
       },
     }),
   ).current;
   const save = async () => {
-    if (savingRef.current || (paths.length === 0 && !initialUri) || !canvasRef.current) return;
+    if (savingRef.current || !canSave || !canvasRef.current) return;
     savingRef.current = true;
     try {
       setSaving(true);
+      if (!hasInk && !showBase) {
+        await onDelete();
+        return;
+      }
       const uri = captureUri.current ?? await captureRef(canvasRef, {
         format: "png",
         quality: 1,
@@ -796,12 +865,12 @@ function HandwritingModal({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={saveFailed ? "손글씨 저장 재시도" : "손글씨 저장"}
-            disabled={(paths.length === 0 && !initialUri) || saving}
+            disabled={!canSave || saving}
             onPress={() => void save()}
             style={[
               saveFailed ? styles.handwritingRetry : styles.handwritingRound,
               { backgroundColor: saveFailed ? clinicalTheme(isDark).danger : clinicalTheme(isDark).accent },
-              (paths.length === 0 && !initialUri) || saving ? styles.disabledButton : undefined,
+              !canSave || saving ? styles.disabledButton : undefined,
             ]}
           >
             {saving ? (
@@ -823,7 +892,7 @@ function HandwritingModal({
           ]}
           {...panResponder.panHandlers}
         >
-          {initialUri && (
+          {showBase && (
             <Image
               source={{ uri: initialUri }}
               resizeMode="stretch"
@@ -831,17 +900,8 @@ function HandwritingModal({
             />
           )}
           <Svg width="100%" height="100%">
-            {paths.map((path, index) => (
-              <Path
-                key={`${index}-${path.d.length}`}
-                d={path.d}
-                fill="none"
-                stroke={path.color}
-                strokeWidth={path.width}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            ))}
+            <InkPaths paths={paths} />
+            {stroke && <InkPath path={stroke} />}
             {eraserEnabled && eraserCursor.visible && (
               <Circle
                 cx={eraserCursor.x}
@@ -895,9 +955,10 @@ function HandwritingModal({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="손글씨 모두 지우기"
-            disabled={paths.length === 0}
-            onPress={() => setPaths([])}
-            style={[styles.handwritingRound, { backgroundColor: clinicalTheme(isDark).field }, paths.length === 0 && styles.disabledButton]}
+            accessibilityHint={showBase ? "저장하면 기존 필기도 삭제됩니다" : undefined}
+            disabled={saving || saveFailed || (paths.length === 0 && !showBase)}
+            onPress={() => { setPaths([]); setBaseCleared(true); }}
+            style={[styles.handwritingRound, { backgroundColor: clinicalTheme(isDark).field }, paths.length === 0 && !showBase && styles.disabledButton]}
           >
             <Ionicons name="trash-outline" size={19} color={clinicalTheme(isDark).danger} />
           </Pressable>
@@ -906,6 +967,14 @@ function HandwritingModal({
     </NoteModal>
   );
 }
+
+type InkStroke = { d: string; color: string; width: number };
+function InkPath({ path }: { path: InkStroke }) {
+  return <Path d={path.d} fill="none" stroke={path.color} strokeWidth={path.width} strokeLinecap="round" strokeLinejoin="round" />;
+}
+const InkPaths = React.memo(function InkPaths({ paths }: { paths: InkStroke[] }) {
+  return <>{paths.map((path, index) => <InkPath key={index} path={path} />)}</>;
+});
 
 function EraserSizeSlider({
   value,
@@ -1140,18 +1209,6 @@ const styles = StyleSheet.create(
     floatingNavContent: { alignItems: "center", justifyContent: "center", gap: 2 },
     floatingNavIcon: { width: 20, height: 20, lineHeight: 20, includeFontPadding: false, textAlign: "center" },
     floatingNavText: { fontSize: 11, fontFamily: "Pretendard-Medium", includeFontPadding: false, textAlign: "center" },
-    card: {
-      backgroundColor: clinicalTheme(false).surface,
-      borderRadius: 14,
-      borderWidth: 0,
-      borderColor: "#E8EEEC",
-      padding: 14,
-      shadowColor: "#000000",
-      shadowOpacity: 0,
-      shadowRadius: 12,
-      shadowOffset: { width: 0, height: 4 },
-      elevation: 0,
-    },
     disabledButton: { opacity: 0.62 },
     settingsTitle: { color: "#1C1C1E", fontSize: 21, fontWeight: "900" },
     settingsLabel: {
@@ -1181,37 +1238,6 @@ const styles = StyleSheet.create(
     modeText: { flex: 1 },
     modeTitle: { color: "#1C1C1E", fontSize: 15, fontWeight: "900" },
     modeCaption: { color: "#8E8E93", fontSize: 11, marginTop: 3 },
-    futureCard: {
-      minHeight: 360,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 30,
-    },
-    futureIcon: {
-      width: 68,
-      height: 68,
-      borderRadius: 22,
-      backgroundColor: "#F2F2F7",
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 16,
-    },
-    futureTitle: { color: "#1C1C1E", fontSize: 24, fontWeight: "900" },
-    futureCaption: {
-      color: "#8E8E93",
-      fontSize: 13,
-      lineHeight: 20,
-      textAlign: "center",
-      marginTop: 8,
-    },
-    futureBadge: {
-      backgroundColor: "#E5E5EA",
-      borderRadius: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      marginTop: 18,
-    },
-    futureBadgeText: { color: clinicalTheme(false).accent, fontSize: 12, fontWeight: "900" },
     cameraPage: { flex: 1, backgroundColor: "#07110F" },
     cameraOverlay: {
       flex: 1,
@@ -1285,16 +1311,6 @@ const styles = StyleSheet.create(
 );
 const darkStyles = StyleSheet.create({
   appBackground: { backgroundColor: clinicalTheme(true).page },
-  card: {
-    backgroundColor: clinicalTheme(true).surface,
-    borderColor: clinicalTheme(true).border,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  primaryText: { color: clinicalTheme(true).ink },
-  secondaryText: { color: clinicalTheme(true).muted },
-  accentText: { color: clinicalTheme(true).accent },
-  softButton: { backgroundColor: "#2C2C2E" },
   eraserSizeBar: { backgroundColor: clinicalTheme(true).surface },
   eraserSizeLabel: { color: clinicalTheme(true).muted },
   eraserSliderTrack: { backgroundColor: clinicalTheme(true).border },

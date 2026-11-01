@@ -1,7 +1,7 @@
 export type PatientWorkspaceLike<F> = {
   version: 2;
   activeId: string;
-  patients: { id: string; form: F }[];
+  patients: { id: string; form: F; createdAt?: number }[];
 };
 
 /** Plan an explicit all-patient reset without mutating records or other storage. */
@@ -12,7 +12,7 @@ export function planPatientWorkspaceReset<
     historyDrawing: string | null;
     attachments: { uri: string }[];
   },
->(workspace: PatientWorkspaceLike<F>, blank: { id: string; form: F }) {
+>(workspace: PatientWorkspaceLike<F>, blank: { id: string; form: F; createdAt?: number }) {
   const uris = [
     ...new Set(
       workspace.patients

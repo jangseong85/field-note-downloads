@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
+  Linking,
   Image,
   Pressable,
   useWindowDimensions,
@@ -200,6 +201,10 @@ export default function MemoAttachments({
         Alert.alert(
           "마이크 권한 필요",
           "설정에서 마이크 접근을 허용해 주세요.",
+          result.canAskAgain ? undefined : [
+            { text: "닫기", style: "cancel" },
+            { text: "설정 열기", onPress: () => void Linking.openSettings() },
+          ],
         );
         return;
       }
@@ -237,7 +242,7 @@ export default function MemoAttachments({
     }
     Alert.alert(
       "현장 녹취",
-      "환자·보호자에게 녹취 목적을 알리고 동의를 받은 후 시작하세요. 녹취는 이 기기에만 저장됩니다.",
+      "환자·보호자에게 녹취 목적을 알리고 동의를 받은 후 시작하세요. 녹취는 이 기기에만 저장됩니다.\n\n화면이 꺼지거나 다른 앱으로 전환하면 녹취가 그 시점까지 저장되고 멈춥니다.",
       [
         { text: "취소", style: "cancel" },
         { text: "동의 확인 · 시작", onPress: () => void beginRecording() },
@@ -250,12 +255,15 @@ export default function MemoAttachments({
     operation.current = true;
     onBusyChange(true);
     try {
-      const granted =
-        permission?.granted || (await requestCameraPermission()).granted;
-      if (!granted) {
+      const current = permission?.granted ? permission : await requestCameraPermission();
+      if (!current.granted) {
         Alert.alert(
           "카메라 권한 필요",
           "설정에서 카메라 접근을 허용해 주세요.",
+          current.canAskAgain ? undefined : [
+            { text: "닫기", style: "cancel" },
+            { text: "설정 열기", onPress: () => void Linking.openSettings() },
+          ],
         );
         onBusyChange(false);
         return;

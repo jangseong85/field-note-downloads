@@ -211,7 +211,7 @@ test("memo and app use central dialogs, not the native Alert import", () => {
   assert.match(app, /<NoteDialogProvider>/);
   assert.match(app, /<NoteDialogHost isDark=\{isDark\}/);
   assert.equal((app.match(/<SquishThemeSwitch\b/g) || []).length, 3, "quick settings retain their three controls");
-  assert.equal((read("src/SettingsScreen.tsx").match(/<SquishThemeSwitch\b/g) || []).length, 3, "the settings screen offers the same three controls");
+  assert.equal((read("src/SettingsScreen.tsx").match(/<SquishThemeSwitch\b/g) || []).length, 4, "the settings screen offers the same three controls plus following the device theme");
   assert.doesNotMatch(app, /text: isDark \? "라이트 모드로 변경"/);
   assert.doesNotMatch(read("src/SquishThemeSwitch.tsx"), /Ionicons|sunny|moon/);
   assert.doesNotMatch(read("src/SquishThemeSwitch.tsx"), /useNativeDriver: true/);
@@ -367,15 +367,17 @@ test("home displays device affiliation and routes to memo/settings without mutat
 
 test("settings preserves all device preference callbacks and affiliation editing", () => {
   const h=harness("src/SettingsScreen.tsx"), calls=[];
-  const props={isDark:true,useWheelPicker:false,wheelPreferenceReady:false,medicalTerms:true,
+  const props={isDark:true,useWheelPicker:false,wheelPreferenceReady:false,medicalTerms:true,followSystemTheme:false,
+    onFollowSystemThemeChange:value=>calls.push(["system",value]),
     onThemeChange:value=>calls.push(["theme",value]), onWheelChange:value=>calls.push(["wheel",value]), onMedicalTermsChange:value=>calls.push(["terms",value]), onAffiliationSaved:value=>calls.push(["sender",value])};
   const root=h.render(h.exports.default,props);
   const switches=find(root,"Switch");
-  assert.equal(switches.length,3);
-  assert.deepEqual(switches.map(node=>node.props.checked),[true,false,true]);
-  assert.equal(switches[1].props.disabled,true);
-  switches[0].props.onChange(false);
-  switches[2].props.onChange(false);
+  assert.equal(switches.length,4);
+  assert.deepEqual(switches.map(node=>node.props.checked),[false,true,false,true]);
+  assert.equal(switches[2].props.disabled,true);
+  switches[0].props.onChange(true);
+  switches[1].props.onChange(false);
+  switches[3].props.onChange(false);
   find(root,"Affiliation")[0].props.onSaved({affiliation:"변경"});
-  assert.deepEqual(calls,[["theme",false],["terms",false],["sender",{affiliation:"변경"}]]);
+  assert.deepEqual(calls,[["system",true],["theme",false],["terms",false],["sender",{affiliation:"변경"}]]);
 });
