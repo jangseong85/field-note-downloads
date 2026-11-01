@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
+import * as ImagePicker from "expo-image-picker";
 import Svg, { Path } from "react-native-svg";
 import { captureRef } from "react-native-view-shot";
 import ChatGptShare from "../modules/chatgpt-share";
@@ -115,13 +116,12 @@ export default function MedicineBagAnalysis({
       if (current.granted) return;
       alert(
         "카메라 권한 필요",
-        "설정에서 카메라 접근을 허용해 주세요.",
+        "앨범에서 사진을 고르거나, 설정에서 카메라 접근을 허용해 주세요.",
         current.canAskAgain ? undefined : [
           { text: "닫기", style: "cancel" },
           { text: "설정 열기", onPress: () => void Linking.openSettings() },
         ],
       );
-      closeRef.current();
     })();
     // Runs once per opening; the permission object only seeds the first check.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,11 +142,20 @@ export default function MedicineBagAnalysis({
     try {
       await task();
     } catch {
-      alert("약 봉투 분석", failure);
+      alert("처방전 분석", failure);
     } finally {
       working.current = false;
       setBusy(false);
     }
+  }
+
+  async function acceptPhoto(uri: string) {
+    const raw = await keepMedicineBagFile(uri);
+    const upright = await normalize(raw, undefined, 3000);
+    await FileSystem.deleteAsync(raw, { idempotent: true });
+    setPhoto(upright);
+    setCrop(null);
+    setStep("crop");
   }
 
   const takePhoto = () =>
@@ -154,13 +163,16 @@ export default function MedicineBagAnalysis({
       if (!cameraReady || !camera.current) return;
       const shot = await camera.current.takePictureAsync({ quality: 0.9 });
       if (!shot?.uri) throw new Error("No photo");
-      const raw = await keepMedicineBagFile(shot.uri);
-      const upright = await normalize(raw, undefined, 3000);
-      await FileSystem.deleteAsync(raw, { idempotent: true });
-      setPhoto(upright);
-      setCrop(null);
-      setStep("crop");
+      await acceptPhoto(shot.uri);
     }, "사진을 처리하지 못했습니다. 다시 촬영해 주세요.");
+
+  // The system photo picker needs no storage permission; the copy is re-encoded like a new shot, so EXIF is dropped.
+  const pickPhoto = () =>
+    run(async () => {
+      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 1, exif: false });
+      const uri = picked.canceled ? null : picked.assets[0]?.uri;
+      if (uri) await acceptPhoto(uri);
+    }, "앨범 사진을 불러오지 못했습니다. 다른 사진을 골라 주세요.");
 
   const confirmCrop = () =>
     run(async () => {
@@ -177,7 +189,7 @@ export default function MedicineBagAnalysis({
     run(async () => {
       if (!cropped) return;
       if (Platform.OS === "android" && !ChatGptShare) {
-        alert("약 봉투 분석", "이 버전의 앱에서는 ChatGPT로 보낼 수 없습니다. 앱을 업데이트해 주세요.");
+        alert("처방전 분석", "이 버전의 앱에서는 ChatGPT로 보낼 수 없습니다. 앱을 업데이트해 주세요.");
         return;
       }
       if (ChatGptShare && !ChatGptShare.isInstalled()) {
@@ -281,12 +293,12 @@ export default function MedicineBagAnalysis({
   const measure = (setter: (size: Size) => void) => (event: LayoutChangeEvent) =>
     setter({ width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height });
 
-  const title = step === "camera" ? "약 봉투 촬영" : step === "crop" ? "보낼 영역 지정" : "보낼 사진 확인";
+  const title = step === "camera" ? "처방전 촬영" : step === "crop" ? "보낼 영역 지정" : "보낼 사진 확인";
   return (
     <NoteModal visible={visible} animationType="slide" onRequestClose={() => (step === "camera" ? close() : setStep(step === "review" ? "crop" : "camera"))}>
       <SafeAreaView style={styles.page}>
         <View style={styles.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel="약 봉투 분석 닫기" onPress={close} disabled={busy} style={styles.iconButton}>
+          <Pressable accessibilityRole="button" accessibilityLabel="처방전 분석 닫기" onPress={close} disabled={busy} style={styles.iconButton}>
             <Ionicons name="close" size={26} color="#FFFFFF" />
           </Pressable>
           <Text style={styles.title}>{title}</Text>
@@ -295,8 +307,8 @@ export default function MedicineBagAnalysis({
 
         {step === "camera" && (
           <>
-            <Text style={styles.hint}>약 이름이 적힌 부분을 가깝게 찍어 주세요.</Text>
-            {visible && permission?.granted && (
+            <Text style={styles.hint}>약 이름이 적힌 부분을 가깝게 찍거나 앨범에서 골라 주세요.</Text>
+            {visible && permission?.granted ? (
               <CameraView
                 ref={camera}
                 style={styles.stage}
@@ -304,17 +316,30 @@ export default function MedicineBagAnalysis({
                 onCameraReady={() => setCameraReady(true)}
                 onMountError={() => alert("카메라 오류", "다른 앱에서 카메라를 사용 중인지 확인해 주세요.")}
               />
+            ) : (
+              <View style={styles.stage} />
             )}
             <View style={styles.shutterRow}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="약 봉투 촬영"
+                accessibilityLabel="앨범에서 처방전 사진 고르기"
+                disabled={busy}
+                onPress={() => void pickPhoto()}
+                style={({ pressed }) => [styles.album, { opacity: busy ? 0.35 : pressed ? 0.6 : 1 }]}
+              >
+                <Ionicons name="images-outline" size={24} color="#FFFFFF" />
+                <Text style={styles.albumText}>앨범</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="처방전 촬영"
                 disabled={!cameraReady || busy}
                 onPress={() => void takePhoto()}
                 style={styles.shutter}
               >
                 {busy ? <ActivityIndicator color="#FFFFFF" /> : <View style={styles.shutterInner} />}
               </Pressable>
+              <View style={styles.album} />
             </View>
           </>
         )}
@@ -445,7 +470,9 @@ const useStyles = makeStyles({
   shade: { position: "absolute", backgroundColor: "rgba(0,0,0,0.6)" },
   frame: { position: "absolute", borderWidth: 2, borderColor: "#FFFFFF" },
   corner: { position: "absolute", width: 22, height: 22, borderRadius: 11, backgroundColor: "#FFFFFF" },
-  shutterRow: { padding: 24, alignItems: "center" },
+  shutterRow: { padding: 24, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  album: { width: 64, minHeight: 64, alignItems: "center", justifyContent: "center", gap: 2 },
+  albumText: { fontSize: TYPE.caption, color: "#FFFFFF", fontFamily: "Pretendard-Medium" },
   shutter: { width: 72, height: 72, borderRadius: 36, borderWidth: 3, borderColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
   shutterInner: { width: 58, height: 58, borderRadius: 29, backgroundColor: "#FFFFFF" },
   tools: { flexDirection: "row", justifyContent: "center", gap: 8, paddingTop: 12, paddingHorizontal: 16 },

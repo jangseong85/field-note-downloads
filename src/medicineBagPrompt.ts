@@ -2,8 +2,8 @@
  * Sent to the medic's own ChatGPT app with the cropped medicine-bag photo (docs/MEDICINE_BAG_ANALYSIS.md).
  * The fixed output template and the "unreadable" sentence keep every answer in the same three sections.
  */
-export const MEDICINE_BAG_PROMPT = `[구급 현장 약 봉투 분석]
-첨부 사진은 환자 약 봉투의 약 이름 부분이다. 아래 출력 형식 그대로만 답한다.
+export const MEDICINE_BAG_PROMPT = `[구급 현장 처방전·약 봉투 분석]
+첨부 사진은 환자 처방전 또는 약 봉투의 약 이름 부분이다. 아래 출력 형식 그대로만 답한다.
 
 규칙
 - 형식 밖의 문장(인사말, 서론, 요약, 주의 문구, 추가 질문, 진료 권고)은 쓰지 않는다.

@@ -130,27 +130,6 @@ export default function PatientNoteScreen(p: Props) {
       : null;
   const ink = { color: t.ink },
     muted = { color: t.muted };
-  function tool(
-    icon: React.ComponentProps<typeof Ionicons>["name"],
-    label: string,
-    action: () => void,
-    disabled = false,
-  ) {
-    return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        disabled={disabled}
-        onPress={action}
-        style={({ pressed }) => [
-          s.tool,
-          { opacity: disabled ? 0.35 : pressed ? 0.5 : 1 },
-        ]}
-      >
-        <Ionicons name={icon} size={20} color={t.muted} />
-      </Pressable>
-    );
-  }
   function roundTool(
     icon: React.ComponentProps<typeof Ionicons>["name"],
     label: string,
@@ -228,27 +207,36 @@ export default function PatientNoteScreen(p: Props) {
   ) {
     if (!uri) return null;
     return (
-      <View style={[s.savedDrawing, { backgroundColor: t.field }]}>
+      <View style={[s.savedDrawing, { borderColor: t.border }]}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="저장한 필기 보기"
-          onPress={() => setPreview(uri)}
-          style={s.savedDrawingOpen}
+          accessibilityLabel="손글씨 고치기"
+          disabled={p.mediaBusy}
+          onPress={() => p.onDraw(field)}
         >
-          <Ionicons name="document-text-outline" size={20} color={t.muted} />
-          <Text style={[s.savedDrawingText, ink]}>손글씨 기록</Text>
-          <Ionicons name="chevron-forward" size={16} color={t.muted} />
+          <SavedDrawingImage uri={uri} />
         </Pressable>
-        {tool("trash-outline", "필기 삭제", () =>
-          Alert.alert("필기 삭제", "이 필기만 삭제할까요?", [
-            { text: "취소", style: "cancel" },
-            {
-              text: "삭제",
-              style: "destructive",
-              onPress: () => p.onDeleteDrawing(field),
-            },
-          ]),
-        )}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="필기 삭제"
+          hitSlop={6}
+          onPress={() =>
+            Alert.alert("필기 삭제", "이 필기만 삭제할까요?", [
+              { text: "취소", style: "cancel" },
+              {
+                text: "삭제",
+                style: "destructive",
+                onPress: () => p.onDeleteDrawing(field),
+              },
+            ])
+          }
+          style={({ pressed }) => [
+            s.savedDrawingDelete,
+            { backgroundColor: t.field, opacity: pressed ? 0.6 : 1 },
+          ]}
+        >
+          <Ionicons name="trash-outline" size={17} color={t.danger} />
+        </Pressable>
       </View>
     );
   }
@@ -596,7 +584,7 @@ export default function PatientNoteScreen(p: Props) {
             {heading("복용 약물")}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="약 봉투 사진을 ChatGPT로 분석"
+              accessibilityLabel="처방전 사진을 ChatGPT로 분석"
               disabled={p.busy || p.mediaBusy}
               onPress={() => {
                 p.onMediaBusyChange(true);
@@ -608,7 +596,7 @@ export default function PatientNoteScreen(p: Props) {
               ]}
             >
               <Ionicons name="camera-outline" size={18} color={t.accent} />
-              <Text style={[s.medicineText, { color: t.accent }]}>약 봉투 촬영 · ChatGPT 분석</Text>
+              <Text style={[s.medicineText, { color: t.accent }]}>처방전 촬영 · ChatGPT 분석</Text>
             </Pressable>
           </View>
           </>}
@@ -816,6 +804,24 @@ export default function PatientNoteScreen(p: Props) {
     </>
   );
 }
+/** The saved handwriting at its own proportions, so it reads in place without opening it. */
+function SavedDrawingImage({ uri }: { uri: string }) {
+  const s = useS();
+  // Portrait guess until the file reports its size; the canvas is drawn on a tall page.
+  const [ratio, setRatio] = useState(0.62);
+  return (
+    <Image
+      source={{ uri }}
+      resizeMode="contain"
+      onLoad={(event) => {
+        const { width, height } = event.nativeEvent.source;
+        if (width > 0 && height > 0) setRatio(width / height);
+      }}
+      style={[s.savedDrawingImage, { aspectRatio: ratio }]}
+    />
+  );
+}
+
 const useS = makeStyles({
   record: { borderRadius: 28, overflow: "hidden" },
   attachmentsSection: { borderRadius: 26, marginTop: 16, padding: 20 },
@@ -829,12 +835,6 @@ const useS = makeStyles({
   },
   medicineText: { fontSize: TYPE.sub, fontFamily: "Pretendard-Medium" },
   tools: { flexDirection: "row", alignItems: "center" },
-  tool: {
-    width: 44,
-    height: 44,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   patientTop: { paddingHorizontal: 16, paddingTop: 16 },
   round: { alignItems: "center", justifyContent: "center" },
   pill: {
@@ -973,20 +973,22 @@ const useS = makeStyles({
   },
   historySummary: { fontSize: TYPE.sub, lineHeight: 21, marginBottom: 14 },
   savedDrawing: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 12,
     marginTop: 10,
-    paddingLeft: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: "hidden",
   },
-  savedDrawingOpen: {
-    minHeight: 48,
-    flex: 1,
-    flexDirection: "row",
-    gap: 8,
+  savedDrawingImage: { width: "100%" },
+  savedDrawingDelete: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
+    justifyContent: "center",
   },
-  savedDrawingText: { fontSize: TYPE.sub, flex: 1 },
   idActions: {
     flexDirection: "row",
     alignItems: "center",

@@ -58,10 +58,10 @@ export default function SettingsScreen(p: Props) {
       </View>
       <View style={[styles.row, { backgroundColor: t.field }]}>
         <View style={styles.labelBlock}>
-          <Text style={[styles.label, { color: t.ink }]}>휠 피커 사용</Text>
-          <Text style={[styles.detail, { color: t.muted }]}>{p.useWheelPicker ? "날짜·시각을 휠로 선택" : "숫자 직접 입력"}</Text>
+          <Text style={[styles.label, { color: t.ink }]}>년월일 및 시각 입력</Text>
+          <Text style={[styles.detail, { color: t.muted }]}>휠 모드 사용</Text>
         </View>
-        <SquishThemeSwitch isDark={p.isDark} accessibilityLabel="휠 피커 사용" checked={p.useWheelPicker} disabled={!p.wheelPreferenceReady} onChange={p.onWheelChange} />
+        <SquishThemeSwitch isDark={p.isDark} accessibilityLabel="휠 모드 사용" checked={p.useWheelPicker} disabled={!p.wheelPreferenceReady} onChange={p.onWheelChange} />
       </View>
       <View style={[styles.row, { backgroundColor: t.field }]}>
         <View style={styles.labelBlock}>
