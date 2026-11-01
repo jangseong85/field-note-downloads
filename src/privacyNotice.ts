@@ -4,7 +4,7 @@
  * together with the behaviour it describes. Legal wording has not been reviewed by counsel.
  */
 export type PolicySection = { heading: string; paragraphs?: string[]; items?: string[] };
-export type PolicyDocument = { title: string; intro: string; sections: PolicySection[]; effective: string };
+export type PolicyDocument = { title: string; intro: string; sections: PolicySection[]; effective?: string };
 
 /** Contact shown in both documents. */
 export const POLICY_CONTACT_EMAIL = "contact@gjfire.xyz";
@@ -185,9 +185,53 @@ export const TERMS_OF_USE: PolicyDocument = {
       paragraphs: ["제작자는 관계 법령을 위반하지 않는 범위에서 약관을 변경할 수 있으며, 변경 내용과 시행일을 시행 전에 안내합니다."],
     },
     {
-      heading: "제11조 (준거법과 분쟁 해결)",
+      heading: "제11조 (오픈소스 소프트웨어)",
+      paragraphs: [
+        "앱에는 오픈소스 소프트웨어와 글꼴이 포함되어 있으며, 각 저작권자의 라이선스 조건에 따라 사용합니다. 포함된 소프트웨어 목록과 라이선스 원문은 앱의 설정 > 오픈소스 라이선스에서 확인할 수 있습니다.",
+      ],
+    },
+    {
+      heading: "제12조 (준거법과 분쟁 해결)",
       paragraphs: [`이 약관은 대한민국 법률에 따라 해석됩니다. 앱 이용과 관련한 문의는 ${POLICY_CONTACT}을 통해 접수할 수 있습니다.`],
     },
   ],
   effective: POLICY_EFFECTIVE,
+};
+
+/** Settings > 오픈소스 라이선스: what ships inside the APK, with the notices those licenses ask to be shown. */
+export const OPEN_SOURCE_NOTICES: PolicyDocument = {
+  title: "오픈소스 라이선스",
+  intro: "이 앱에는 다음 오픈소스 소프트웨어와 글꼴이 포함되어 있습니다. 각 저작권자에게 감사드립니다.",
+  sections: [
+    {
+      heading: "포함된 소프트웨어",
+      items: [
+        "React Native, React — Copyright (c) Meta Platforms, Inc. and affiliates. MIT License",
+        "Expo SDK 및 Expo 모듈(카메라, 오디오, 파일, 이미지, 사진 선택, 문자, 시작 화면 등) — Copyright (c) 650 Industries, Inc. (Expo). MIT License",
+        "react-native-svg, react-native-view-shot, react-native-webview, react-native-safe-area-context, @react-native-async-storage/async-storage, @quidone/react-native-wheel-picker, react-native-document-scanner-plugin, @infinitered/react-native-mlkit-text-recognition — 각 저작권자. MIT License",
+        "three.js(시작 화면 효과) — Copyright (c) 2010-2026 three.js authors. MIT License",
+        "Android Jetpack(AndroidX, CameraX) — Copyright (c) The Android Open Source Project. Apache License 2.0",
+        "Pretendard 글꼴 — Copyright (c) 2021, Kil Hyung-jin. SIL Open Font License 1.1",
+        "Barlow Condensed 글꼴(시작 화면) — Copyright 2017 The Barlow Project Authors. SIL Open Font License 1.1",
+        "Google ML Kit 문자 인식 — Google의 ML Kit 이용약관에 따라 기기 안에서 사용",
+      ],
+    },
+    {
+      heading: "MIT License",
+      paragraphs: [
+        "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
+      ],
+    },
+    {
+      heading: "Apache License 2.0",
+      paragraphs: ["Licensed under the Apache License, Version 2.0. 원문: https://www.apache.org/licenses/LICENSE-2.0"],
+    },
+    {
+      heading: "SIL Open Font License 1.1",
+      paragraphs: [
+        "This Font Software is licensed under the SIL Open Font License, Version 1.1. 원문: https://openfontlicense.org",
+        "글꼴은 앱 화면 표시에만 사용하며 따로 판매하거나 배포하지 않습니다.",
+      ],
+    },
+  ],
 };

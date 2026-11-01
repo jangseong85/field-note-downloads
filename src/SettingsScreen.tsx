@@ -6,7 +6,7 @@ import SquishThemeSwitch from "./SquishThemeSwitch";
 import { RecordTabs } from "./ClinicalControls";
 import { clinicalTheme } from "./clinicalTheme";
 import PolicyDocumentScreen from "./PolicyDocumentScreen";
-import { PRIVACY_POLICY, TERMS_OF_USE, type PolicyDocument } from "./privacyNotice";
+import { OPEN_SOURCE_NOTICES, PRIVACY_POLICY, TERMS_OF_USE, type PolicyDocument } from "./privacyNotice";
 import type { SenderInfo } from "./smsMessage";
 import { TYPE, makeStyles, useTextSize, type TextSize } from "./design";
 
@@ -72,7 +72,7 @@ export default function SettingsScreen(p: Props) {
     </View>
     <View style={[styles.card, { backgroundColor: t.surface }]}>
       <Text style={[styles.heading, { color: t.ink }]}>{en ? "Policies" : "약관 및 정책"}</Text>
-      {[PRIVACY_POLICY, TERMS_OF_USE].map((document) => (
+      {[PRIVACY_POLICY, TERMS_OF_USE, OPEN_SOURCE_NOTICES].map((document) => (
         <Pressable
           key={document.title}
           accessibilityRole="button"
@@ -82,7 +82,7 @@ export default function SettingsScreen(p: Props) {
         >
           <View style={styles.labelBlock}>
             <Text style={[styles.label, { color: t.ink }]}>{document.title}</Text>
-            <Text style={[styles.detail, { color: t.muted }]}>시행일 {document.effective}</Text>
+            {!!document.effective && <Text style={[styles.detail, { color: t.muted }]}>시행일 {document.effective}</Text>}
           </View>
           <Ionicons name="chevron-forward" size={18} color={t.muted} style={styles.chevron} />
         </Pressable>

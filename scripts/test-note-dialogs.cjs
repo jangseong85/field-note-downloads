@@ -381,7 +381,7 @@ test("settings preserves all device preference callbacks and affiliation editing
 test("settings opens a full privacy policy and terms of use written for release", () => {
   const m = { exports: {} };
   new Function("module", "exports", ts.transpileModule(read("src/privacyNotice.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(m, m.exports);
-  const { PRIVACY_POLICY, TERMS_OF_USE } = m.exports;
+  const { PRIVACY_POLICY, TERMS_OF_USE, OPEN_SOURCE_NOTICES } = m.exports;
   const headings = doc => doc.sections.map(section => section.heading.replace(/^제\d+조 /, ""));
   for (const required of ["(처리하는 개인정보의 항목)", "(개인정보의 처리 목적)", "(개인정보의 보유 기간 및 파기)", "(개인정보의 제3자 제공 및 국외 이전)", "(개인정보 처리의 위탁)", "(정보주체의 권리와 행사 방법)", "(개인정보의 안전성 확보 조치)", "(문의처)", "(처리방침의 변경)"])
     assert.ok(headings(PRIVACY_POLICY).includes(required), required);
@@ -393,10 +393,16 @@ test("settings opens a full privacy policy and terms of use written for release"
   assert.match(text(PRIVACY_POLICY), /contact@gjfire\.xyz/);
   assert.match(text(TERMS_OF_USE), /contact@gjfire\.xyz/);
   assert.match(text(TERMS_OF_USE), /고의 또는 중대한 과실/, "liability limit keeps the statutory exception");
+  assert.match(TERMS_OF_USE.sections.find(section => section.heading.endsWith("(오픈소스 소프트웨어)")).paragraphs[0], /설정 > 오픈소스 라이선스/, "the terms point to the notices instead of carrying them");
+  assert.doesNotMatch(text(TERMS_OF_USE), /Permission is hereby granted/);
+  const shipped = OPEN_SOURCE_NOTICES.sections[0].items;
+  for (const name of ["React Native", "Expo", "Pretendard", "Barlow Condensed", "three.js", "ML Kit"]) assert.ok(shipped.some(item => item.includes(name)), name);
+  assert.match(text(OPEN_SOURCE_NOTICES), /The above copyright notice and this permission notice shall be included/, "MIT requires its notice text");
+  assert.deepEqual(OPEN_SOURCE_NOTICES.sections.map(section => section.heading), ["포함된 소프트웨어", "MIT License", "Apache License 2.0", "SIL Open Font License 1.1"]);
   PRIVACY_POLICY.sections.forEach((section, index) => assert.match(section.heading, new RegExp(`^제${index + 1}조 `)));
   TERMS_OF_USE.sections.forEach((section, index) => assert.match(section.heading, new RegExp(`^제${index + 1}조 `)));
   const settings = read("src/SettingsScreen.tsx");
-  assert.match(settings, /\[PRIVACY_POLICY, TERMS_OF_USE\]\.map/);
+  assert.match(settings, /\[PRIVACY_POLICY, TERMS_OF_USE, OPEN_SOURCE_NOTICES\]\.map/);
   assert.match(settings, /<PolicyDocumentScreen document=\{policy\}/);
   assert.doesNotMatch(settings, /PRIVACY_NOTICE|USAGE_NOTICE/);
 });

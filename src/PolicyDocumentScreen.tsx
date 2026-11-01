@@ -46,7 +46,7 @@ export default function PolicyDocumentScreen({
                 ))}
               </View>
             ))}
-            <Text style={[styles.effective, { color: t.muted }]}>시행일: {document.effective}</Text>
+            {!!document.effective && <Text style={[styles.effective, { color: t.muted }]}>시행일: {document.effective}</Text>}
           </ScrollView>
         )}
       </SafeAreaView>
